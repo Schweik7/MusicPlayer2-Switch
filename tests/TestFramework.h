@@ -15,6 +15,11 @@ namespace TestFramework
                     const char* file, int line);
     void CheckNear(double actual, double expected, double tolerance, const char* expr,
                    const char* file, int line);
+
+    // 递归删除测试临时目录。
+    // 每个用到磁盘的测试都应在开始前调用一次：上一轮留下的文件会让"扫描到几个音频"
+    // 之类的断言依赖历史状态（曾因支持格式列表变化而误报失败）。
+    void RemoveTestDir(const std::string& dir);
 }
 
 #define CHECK(expr)              TestFramework::Check((expr), #expr, __FILE__, __LINE__)

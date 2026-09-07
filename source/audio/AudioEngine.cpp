@@ -91,6 +91,32 @@ void CAudioEngine::MusicFinishedCallback()
     g_song_finished = true;
 }
 
+void CAudioEngine::FlacMixCallback(void* udata, unsigned char* stream, int len)
+{
+    CAudioEngine* engine = static_cast<CAudioEngine*>(udata);
+    if (engine == nullptr || stream == nullptr || len <= 0)
+        return;
+
+    // SDL_mixer 在调用这个钩子之前已经把 stream 填成静音，
+    // 所以暂停时直接返回即可，不必再清零
+    if (engine->m_flac_state != PS_PLAYING)
+        return;
+
+    engine->m_flac.Read(stream, static_cast<size_t>(len));
+
+    // 解码完且缓冲排空后才算播完，交给主循环去切下一首
+    if (engine->m_flac.IsFinished())
+    {
+        engine->m_flac_state = PS_STOPPED;
+        g_song_finished = true;
+    }
+}
+
+bool CAudioEngine::IsFlacFile(const std::string& file_path)
+{
+    return FileUtil::GetExtension(file_path) == "flac";
+}
+
 bool CAudioEngine::Open(const std::string& file_path)
 {
     if (!m_inited)
@@ -107,6 +133,37 @@ bool CAudioEngine::Open(const std::string& file_path)
         return false;
     }
 
+    g_song_finished = false;
+    m_spectrum.Reset();
+
+    // devkitPro 的 SDL_mixer 没编译 FLAC，这类文件走自己的解码器
+    return IsFlacFile(file_path) ? OpenWithFlac(file_path) : OpenWithMixer(file_path);
+}
+
+bool CAudioEngine::OpenWithFlac(const std::string& file_path)
+{
+    int frequency = 48000, channels = 2;
+    Uint16 format = 0;
+    Mix_QuerySpec(&frequency, &format, &channels);
+
+    if (!m_flac.Open(file_path, frequency, channels))
+    {
+        m_last_error = m_flac.GetLastError();
+        return false;
+    }
+
+    m_backend = BK_FLAC;
+    m_file_path = file_path;
+    m_length_ms = m_flac.GetLengthMs();
+    m_flac_state = PS_PLAYING;
+
+    // 接管音乐流。注意这会绕过 Mix_Music，所以播放状态要自己维护。
+    Mix_HookMusic(&CAudioEngine::FlacMixCallback, this);
+    return true;
+}
+
+bool CAudioEngine::OpenWithMixer(const std::string& file_path)
+{
     m_music = Mix_LoadMUS(file_path.c_str());
     if (m_music == nullptr)
     {
@@ -123,9 +180,6 @@ bool CAudioEngine::Open(const std::string& file_path)
         m_length_ms = static_cast<int>(duration * 1000.0);
 #endif
 
-    g_song_finished = false;
-    m_spectrum.Reset();
-
     if (Mix_PlayMusic(m_music, 1) != 0)      // 循环由上层的播放模式决定，这里只播一遍
     {
         m_last_error = std::string("Mix_PlayMusic 失败: ") + Mix_GetError();
@@ -133,6 +187,7 @@ bool CAudioEngine::Open(const std::string& file_path)
         return false;
     }
 
+    m_backend = BK_MIXER;
     m_seek_base_ms = 0;
     m_seek_tick = SDL_GetTicks();
     m_paused_position_ms = 0;
@@ -141,12 +196,20 @@ bool CAudioEngine::Open(const std::string& file_path)
 
 void CAudioEngine::Close()
 {
+    if (m_backend == BK_FLAC)
+    {
+        // 必须先摘掉钩子再关解码器，否则音频线程可能读到已释放的对象
+        Mix_HookMusic(nullptr, nullptr);
+        m_flac.Close();
+        m_flac_state = PS_STOPPED;
+    }
     if (m_music != nullptr)
     {
         Mix_HaltMusic();
         Mix_FreeMusic(m_music);
         m_music = nullptr;
     }
+    m_backend = BK_NONE;
     m_file_path.clear();
     m_length_ms = 0;
     m_seek_base_ms = 0;
@@ -156,6 +219,21 @@ void CAudioEngine::Close()
 
 void CAudioEngine::Play()
 {
+    if (m_backend == BK_FLAC)
+    {
+        if (m_flac_state == PS_PAUSED)
+        {
+            m_flac_state = PS_PLAYING;
+        }
+        else if (m_flac_state == PS_STOPPED)
+        {
+            // 已经播完的曲目重新播放：回到开头
+            m_flac.Seek(0);
+            m_flac_state = PS_PLAYING;
+        }
+        return;
+    }
+
     if (m_music == nullptr)
         return;
     if (Mix_PausedMusic())
@@ -175,6 +253,14 @@ void CAudioEngine::Play()
 
 void CAudioEngine::Pause()
 {
+    if (m_backend == BK_FLAC)
+    {
+        // 混音回调看到非 PS_PLAYING 就不再消费缓冲，位置自然停住
+        if (m_flac_state == PS_PLAYING)
+            m_flac_state = PS_PAUSED;
+        return;
+    }
+
     if (m_music == nullptr || !Mix_PlayingMusic() || Mix_PausedMusic())
         return;
     m_paused_position_ms = GetCurrentPosition();
@@ -191,6 +277,14 @@ void CAudioEngine::TogglePause()
 
 void CAudioEngine::Stop()
 {
+    if (m_backend == BK_FLAC)
+    {
+        m_flac_state = PS_STOPPED;
+        m_flac.Seek(0);
+        m_spectrum.Reset();
+        return;
+    }
+
     if (m_music == nullptr)
         return;
     Mix_HaltMusic();
@@ -201,6 +295,9 @@ void CAudioEngine::Stop()
 
 CAudioEngine::PlayingState CAudioEngine::GetState() const
 {
+    if (m_backend == BK_FLAC)
+        return m_flac_state;
+
     if (m_music == nullptr || !Mix_PlayingMusic())
         return PS_STOPPED;
     return Mix_PausedMusic() ? PS_PAUSED : PS_PLAYING;
@@ -208,6 +305,10 @@ CAudioEngine::PlayingState CAudioEngine::GetState() const
 
 int CAudioEngine::GetCurrentPosition() const
 {
+    // FLAC 后端按实际送进混音器的帧数计算，比下面基于时钟的估算更准
+    if (m_backend == BK_FLAC)
+        return m_flac.GetPositionMs();
+
     if (m_music == nullptr)
         return 0;
     if (Mix_PausedMusic())
@@ -229,6 +330,17 @@ int CAudioEngine::GetSongLength() const
 
 bool CAudioEngine::SetPosition(int ms)
 {
+    if (m_backend == BK_FLAC)
+    {
+        if (!m_flac.Seek(ms))
+            return false;
+        m_spectrum.Reset();
+        // 播完之后再拖进度条应当恢复播放
+        if (m_flac_state == PS_STOPPED)
+            m_flac_state = PS_PLAYING;
+        return true;
+    }
+
     if (m_music == nullptr)
         return false;
     if (ms < 0)
@@ -280,7 +392,8 @@ void CAudioEngine::AdjustVolume(int delta)
 
 void CAudioEngine::Update()
 {
-    if (m_music == nullptr)
+    // FLAC 的时长来自 STREAMINFO，开文件时就准确知道了，不需要反推
+    if (m_backend != BK_MIXER || m_music == nullptr)
         return;
     // 部分格式（如无法预读时长的流）拿不到 Mix_MusicDuration，
     // 这里用播放到结束时的位置反过来补齐时长，好让进度条至少在第二次播放时正确

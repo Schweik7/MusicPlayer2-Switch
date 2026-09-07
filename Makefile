@@ -55,8 +55,9 @@ LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $
 #   - SDL2_ttf 2.22 依赖 harfbuzz
 #   - 是 libpng16，不是 libpng
 #   - curl 依赖 mbedtls 提供 TLS，三个 mbed* 库按 tls -> x509 -> crypto 排列
+#   - libFLAC 不是 SDL2_mixer 的依赖（该包没启用 FLAC），是我们自己直接调的
 LIBS := -lSDL2_mixer -lSDL2_ttf -lSDL2_image -lSDL2 \
-        -lopusfile -lopus -lvorbisidec -logg -lmpg123 -lmodplug \
+        -lopusfile -lopus -lvorbisidec -lFLAC -logg -lmpg123 -lmodplug \
         -lwebp -ljpeg -lharfbuzz -lfreetype -lpng16 -lbz2 \
         -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz \
         -lEGL -lglapi -ldrm_nouveau \

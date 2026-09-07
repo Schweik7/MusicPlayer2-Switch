@@ -17,8 +17,10 @@
 #include <cstdio>
 #include <string>
 
-// 在 net_test.cpp 中实现
+// 在 net_test.cpp / audio_test.cpp 中实现
 void RunNetTests();
+void RunAudioTests();
+
 
 // ---------------------------------------------------------------- StringUtil
 
@@ -359,9 +361,10 @@ static void TestMediaScanner()
     CHECK(CMediaScanner::IsSupportedAudio("a.it"));
     CHECK(!CMediaScanner::IsSupportedAudio("a.txt"));
     CHECK(!CMediaScanner::IsSupportedAudio("noext"));
-    // devkitPro 的 switch-sdl2_mixer 2.0.4 没有编译 FLAC 解码器，
-    // 因此不能把 .flac 列为可播放，否则浏览界面会显示一堆打不开的文件
-    CHECK(!CMediaScanner::IsSupportedAudio("a.flac"));
+    // devkitPro 的 switch-sdl2_mixer 2.0.4 没编译 FLAC，
+    // 但我们用 CFlacDecoder 直接调 libFLAC 补上了这一路，所以 flac 仍是可播放的
+    CHECK(CMediaScanner::IsSupportedAudio("a.flac"));
+    CHECK(CMediaScanner::IsSupportedAudio("a.FLAC"));
 
     SongInfo s;
     s.file_path = "sdmc:/music/周杰伦 - 晴天.mp3";
@@ -416,6 +419,7 @@ static void TestFileRoundTrip()
     std::string playlist_path = dir + "/test.playlist";
     std::string config_path = dir + "/test.ini";
 
+    TestFramework::RemoveTestDir(dir);  // 从干净状态开始，不受上一轮残留影响
     CHECK(FileUtil::CreateDirRecursive(dir));
 
     CPathMapper mapper;
@@ -517,6 +521,9 @@ int main()
     TestMediaScanner();
     TestConfig();
     TestFileRoundTrip();
+
+    std::printf("\n--- 音频 ---\n");
+    RunAudioTests();
 
     std::printf("\n--- 在线下载 ---\n");
     RunNetTests();

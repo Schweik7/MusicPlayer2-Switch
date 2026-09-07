@@ -10,7 +10,7 @@ MusicPlayer2 的 Nintendo Switch homebrew 移植版。
 | 层 | 桌面版 | Switch 版 |
 | --- | --- | --- |
 | 界面 | MFC + 自绘 UIElement + skins | SDL2 自绘，手柄/触摸驱动 |
-| 音频内核 | BASS / FFmpeg（`IPlayerCore`） | SDL2_mixer（mpg123 / vorbisidec / opus / modplug / timidity） |
+| 音频内核 | BASS / FFmpeg（`IPlayerCore`） | SDL2_mixer + 自己实现的 libFLAC 解码路径 |
 | 字体 | 系统字体 + GDI | Switch 系统共享字体（`plGetSharedFontByType`），自带中日韩字形 |
 | 配置 | ini + 注册表 | `sdmc:/switch/MusicPlayer2/config.ini` |
 | 网络 | WinINet | libcurl + mbedTLS（libnx 的 socket / nifm） |
@@ -139,7 +139,9 @@ SwitchPort/
 │   │   ├── MediaScanner.{h,cpp} SD 卡音频扫描
 │   │   └── Config.{h,cpp}      ini 配置
 │   ├── audio/
-│   │   ├── AudioEngine.{h,cpp} SDL2_mixer 播放内核
+│   │   ├── AudioEngine.{h,cpp} 双后端：SDL2_mixer / FLAC 解码器
+│   │   ├── FlacDecoder.{h,cpp} libFLAC 流式解码 + 重采样（Mix_HookMusic）
+│   │   ├── AudioRingBuffer.{h,cpp} ★ 平台无关，解码线程与音频回调的交接
 │   │   └── SpectrumAnalyzer.{h,cpp} post-mix 采样 + FFT 频谱
 │   ├── net/                    ★ 除 HttpClient 外同样平台无关，可在 PC 上测试
 │   │   ├── Json.{h,cpp}        精简只读 JSON 解析器
@@ -233,8 +235,10 @@ QQ 音乐的接口是 HTTPS，网易云的是 HTTP，因此没有证书时网易
 
 - **音频标签读取**：目前标题/艺术家来自文件名或播放列表。taglib 本身是可移植的，
   接进来即可（devkitPro 无现成包，需要自行交叉编译）。这也会让在线搜索的匹配更准。
-- **cue 音轨**：`.playlist` 里的 cue 条目能被正确解析和保留，但 SDL2_mixer 无法在单个
-  音频文件内按音轨定位，因此播放时会被当作整轨。
+  FLAC 的 Vorbis Comment 其实已经可以顺手读了 —— `CFlacDecoder` 的元数据回调里
+  加一个 `FLAC__METADATA_TYPE_VORBIS_COMMENT` 分支即可，目前没做。
+- **cue 音轨**：`.playlist` 里的 cue 条目能被正确解析和保留，但播放时会被当作整轨。
+  FLAC 这一路其实有精确的样本级定位能力，接 cue 表并不难，只是还没做。
 - **音效**：均衡器、混响、变速播放依赖 BASS_FX，SDL2_mixer 没有对应能力。
 - **批量下载歌词**：桌面版可以对整个播放列表批量下载，这里一次只处理当前曲目。
 - **软件更新检查**。
@@ -243,30 +247,55 @@ QQ 音乐的接口是 HTTPS，网易云的是 HTTP，因此没有证书时网易
 
 ## 支持的音频格式
 
-devkitPro 的 `switch-sdl2_mixer` 是 **2.0.4**，实际编译进去的解码器可以用
-`nm libSDL2_mixer.a | grep Mix_MusicInterface_` 查到：
-
 | 格式 | 解码器 | 说明 |
 | --- | --- | --- |
 | mp3 | mpg123 | |
 | ogg / oga | vorbisidec（Tremor） | 整数解码，音质与官方 libvorbis 有极小差异 |
 | opus | opusfile | |
+| **flac** | **libFLAC（自己实现的一路）** | 见下 |
 | wav / aiff / aif | 内置 | |
 | mod / xm / s3m / it | modplug | |
 | mid / midi | timidity | 需要 GUS 音色库，见下 |
 
-**不支持 FLAC。** 该包构建时没有启用 FLAC（`music_flac.o` 在归档里但是空的），
-所以浏览界面不会列出 `.flac` 文件 —— 列出来只会点开就报错。桌面版靠 BASS 支持 FLAC，
-这是本移植版相对桌面版最明显的能力缺口。想要 FLAC 需要自行用启用 FLAC 的选项重新
-构建 `switch-sdl2_mixer`，或者接 libFLAC 自己做一路解码送进 `Mix_HookMusic`。
+除 FLAC 外都由 SDL_mixer 提供。devkitPro 的 `switch-sdl2_mixer` 是 **2.0.4**，
+实际编译进去的解码器可以用 `nm libSDL2_mixer.a | grep Mix_MusicInterface_` 查到。
+
+### FLAC 是自己解的
+
+该 SDL_mixer 包构建时**没有启用 FLAC**（`music_flac.o` 在归档里但是空的），但 devkitPro
+提供了独立的 `libFLAC`。所以 `CFlacDecoder` 自己解一路 PCM，通过 `Mix_HookMusic`
+直接接管音乐流：
+
+```
+解码线程: libFLAC 解出 int32 分声道样本
+          -> 转成 int16 交错
+          -> SDL_AudioStream 重采样/转声道到 48kHz 立体声
+          -> 写入环形缓冲区（约 0.7 秒）
+音频回调: 从环形缓冲区读走，不做任何可能阻塞的事
+```
+
+几个设计要点：
+
+- **解码放在独立线程**，不在音频回调里。SD 卡读取延迟有毫秒级尖峰，在回调里做文件 IO
+  会爆音。
+- **`SDL_AudioStream` 负责重采样**：FLAC 常见 44.1kHz，而 Switch 输出固定 48kHz，
+  还要处理单声道/多声道和 16/24 bit 的差异。
+- **seek 用代号（generation）失效在途数据**：定位时自增计数器并清空环形缓冲，解码线程
+  发现代号变了就丢弃已解出但还没写入的数据，否则跳转后会先播放一段旧音频。
+- **播放位置按实际送进混音器的帧数计算**，比 SDL_mixer 那条路基于时钟的估算更准，
+  也不受 `Mix_MusicDuration` 缺失的影响（时长直接来自 STREAMINFO）。
+
+环形缓冲区（`AudioRingBuffer`）不依赖任何平台库，主机端测试覆盖了回绕、溢出、
+连续流和双线程读写。
 
 MIDI 用的是 SDL_mixer 内置的 timidity，需要 SD 卡上有 GUS 音色库和 `timidity.cfg`
 才能出声，否则 `Mix_LoadMUS` 会失败。
 
 ## 已知限制
 
-- **定位精度**：SDL2_mixer 的 `Mix_GetMusicPosition` 对部分格式不可靠，因此播放位置由
-  「定位基准 + 自行累计的经过时间」推算。长时间播放可能出现秒级漂移，切歌或定位后归零。
+- **定位精度**：SDL2_mixer 那条路的 `Mix_GetMusicPosition` 对部分格式不可靠，因此播放
+  位置由「定位基准 + 自行累计的经过时间」推算，长时间播放可能出现秒级漂移，切歌或定位后
+  归零。FLAC 那条路不受影响 —— 位置按实际送进混音器的帧数算，是精确的。
 - **时长探测**：`Mix_MusicDuration` 需要 SDL_mixer ≥ 2.6，而 devkitPro 提供的是 **2.0.4**，
   所以这个接口**当前用不上**（代码里有版本守卫，会自动退化）。实际表现是：首次播放时
   进度条没有总时长显示，播完一遍后才能反推出来。m3u 播放列表里的 `#EXTINF` 时长可以

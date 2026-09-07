@@ -10,13 +10,13 @@ const std::vector<std::string>& CMediaScanner::GetSupportedExtensions()
     // 用 `nm libSDL2_mixer.a | grep Mix_MusicInterface_` 可以查到权威结果：
     //     MPG123 / OGG / Opus / MODPLUG / TIMIDITY / WAV
     //
-    // 注意没有 FLAC：music_flac.o 虽然在归档里但是空的，该包构建时没启用 FLAC。
-    // 桌面版靠 BASS 支持 FLAC，这里做不到，所以不把 flac 列进来 ——
-    // 列出来只会让用户在浏览界面看到一堆点开就报错的文件。
+    // flac 不在这个清单里 —— 该包构建时没启用 FLAC（music_flac.o 是空的）。
+    // 我们用 CFlacDecoder 直接调 libFLAC 自己解一路，通过 Mix_HookMusic 送进混音器，
+    // 所以这里仍然把 flac 列为可播放。
     //
     // mid/midi 走内置的 TIMIDITY，需要 SD 卡上有 GUS 音色库才能出声，详见 README。
     static const std::vector<std::string> exts{
-        "mp3", "ogg", "oga", "opus", "wav", "aiff", "aif",
+        "mp3", "ogg", "oga", "opus", "flac", "wav", "aiff", "aif",
         "mod", "xm", "s3m", "it", "mid", "midi"
     };
     return exts;

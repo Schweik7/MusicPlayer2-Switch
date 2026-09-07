@@ -1,5 +1,7 @@
 #pragma once
+#include "FlacDecoder.h"
 #include "SpectrumAnalyzer.h"
+
 #include <string>
 
 typedef struct _Mix_Music Mix_Music;
@@ -18,6 +20,14 @@ public:
         PS_STOPPED = 0,
         PS_PLAYING,
         PS_PAUSED
+    };
+
+    // 两套播放后端：常规格式交给 SDL_mixer，FLAC 走自己的解码器 + Mix_HookMusic
+    enum Backend
+    {
+        BK_NONE = 0,
+        BK_MIXER,
+        BK_FLAC
     };
 
     CAudioEngine();
@@ -57,14 +67,31 @@ public:
 
     CSpectrumAnalyzer& GetSpectrum() { return m_spectrum; }
 
+    Backend GetBackend() const { return m_backend; }
+    // 当前曲目是否走自己实现的 FLAC 解码器
+    bool IsFlacBackend() const { return m_backend == BK_FLAC; }
+    const CFlacDecoder& GetFlacDecoder() const { return m_flac; }
+
     const std::string& GetLastError() const { return m_last_error; }
+
+    // 该扩展名是否需要走 FLAC 解码器
+    static bool IsFlacFile(const std::string& file_path);
 
 private:
     static void PostMixCallback(void* udata, unsigned char* stream, int len);
     static void MusicFinishedCallback();
+    // Mix_HookMusic 的回调：FLAC 播放时由它直接产生音乐流
+    static void FlacMixCallback(void* udata, unsigned char* stream, int len);
+
+    bool OpenWithMixer(const std::string& file_path);
+    bool OpenWithFlac(const std::string& file_path);
 
     bool m_inited{};
+    Backend m_backend{ BK_NONE };
     Mix_Music* m_music{};
+    CFlacDecoder m_flac;
+    // FLAC 后端下 Mix_PlayingMusic() 不反映状态，只能自己记
+    PlayingState m_flac_state{ PS_STOPPED };
     std::string m_file_path;
     std::string m_last_error;
 

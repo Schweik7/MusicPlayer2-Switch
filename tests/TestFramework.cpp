@@ -1,6 +1,10 @@
 #include "TestFramework.h"
 
+#include "../source/core/FileUtil.h"
+
 #include <cmath>
+#include <cstdio>
+#include <vector>
 
 namespace TestFramework
 {
@@ -51,6 +55,23 @@ void CheckNear(double actual, double expected, double tolerance, const char* exp
         std::printf("  [FAIL] %s\n         expected: %.4f (±%.4f)\n         actual:   %.4f  (%s:%d)\n",
                     expr, expected, tolerance, actual, file, line);
     }
+}
+
+void RemoveTestDir(const std::string& dir)
+{
+    std::vector<FileUtil::DirEntry> entries;
+    if (!FileUtil::ListDir(dir, entries))
+        return;                         // 目录不存在，无需清理
+
+    for (const FileUtil::DirEntry& entry : entries)
+    {
+        std::string path = FileUtil::Combine(dir, entry.name);
+        if (entry.is_dir)
+            RemoveTestDir(path);
+        else
+            std::remove(path.c_str());
+    }
+    std::remove(dir.c_str());
 }
 
 }   // namespace TestFramework

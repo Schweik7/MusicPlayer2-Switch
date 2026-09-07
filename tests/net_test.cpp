@@ -547,6 +547,7 @@ static void TestDownloadManager()
     std::printf("CDownloadManager\n");
 
     const std::string dir = "net_test_tmp";
+    TestFramework::RemoveTestDir(dir);  // 从干净状态开始，不受上一轮残留影响
     CHECK(FileUtil::CreateDirRecursive(dir));
     const std::string audio = dir + "/周杰伦 - 晴天.mp3";
     CHECK(FileUtil::WriteAll(audio, "fake audio"));
