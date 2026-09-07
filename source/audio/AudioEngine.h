@@ -7,8 +7,9 @@ typedef struct _Mix_Music Mix_Music;
 // 基于 SDL2_mixer 的播放内核。
 //
 // 桌面版通过 IPlayerCore 抽象出 BASS / FFmpeg 两套内核；Switch 上没有 BASS，
-// 这里用 SDL2_mixer（内部走 mpg123 / libvorbis / libFLAC / libopus）实现同一组能力。
-// 相比桌面版缺少的功能：音效（均衡器、混响）、变速播放、cue 音轨内定位。
+// 这里用 SDL2_mixer 实现同一组能力。devkitPro 的 switch-sdl2_mixer 2.0.4 实际带的
+// 解码器是 mpg123 / vorbisidec / opusfile / modplug / timidity / wav（不含 FLAC）。
+// 相比桌面版缺少的功能：FLAC、音效（均衡器、混响）、变速播放、cue 音轨内定位。
 class CAudioEngine
 {
 public:

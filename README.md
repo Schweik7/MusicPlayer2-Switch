@@ -10,7 +10,7 @@ MusicPlayer2 的 Nintendo Switch homebrew 移植版。
 | 层 | 桌面版 | Switch 版 |
 | --- | --- | --- |
 | 界面 | MFC + 自绘 UIElement + skins | SDL2 自绘，手柄/触摸驱动 |
-| 音频内核 | BASS / FFmpeg（`IPlayerCore`） | SDL2_mixer（mpg123 / vorbis / opus / FLAC / modplug） |
+| 音频内核 | BASS / FFmpeg（`IPlayerCore`） | SDL2_mixer（mpg123 / vorbisidec / opus / modplug / timidity） |
 | 字体 | 系统字体 + GDI | Switch 系统共享字体（`plGetSharedFontByType`），自带中日韩字形 |
 | 配置 | ini + 注册表 | `sdmc:/switch/MusicPlayer2/config.ini` |
 | 网络 | WinINet | libcurl + mbedTLS（libnx 的 socket / nifm） |
@@ -65,12 +65,30 @@ pacman -S switch-sdl2 switch-sdl2_ttf switch-sdl2_image switch-sdl2_mixer \
 
 ### 3. 编译
 
+在 MSYS2 shell 里：
+
 ```bash
 cd /d/0-code/5-cpp/MusicPlayer2/SwitchPort
 make
 ```
 
-产物是 `MusicPlayer2.nro`。
+也可以直接从 PowerShell 调用封装脚本（它会自动找到 devkitPro 并进 MSYS2 环境）：
+
+```powershell
+pwsh SwitchPort/build.ps1            # 增量构建
+pwsh SwitchPort/build.ps1 rebuild    # 清理后重建
+```
+
+产物是 `MusicPlayer2.nro`（约 10 MB）。
+
+已在以下环境完成干净构建、零警告：
+
+- devkitA64 GCC 16.1.0 + libnx
+- SDL2 / SDL2_ttf 2.22.0 / SDL2_image / SDL2_mixer 2.0.4
+- curl + mbedTLS
+
+`Makefile` 里的 `LIBS` 顺序来自 `pkg-config --static --libs`，不是照着常见写法猜的。
+如果换了 portlibs 版本导致链接失败，用同样的方式重新取一次即可。
 
 ### 4. 部署
 
@@ -223,12 +241,36 @@ QQ 音乐的接口是 HTTPS，网易云的是 HTTP，因此没有证书时网易
 - **媒体库**：桌面版的 `song_data.dat` 媒体库、听歌统计、多版本管理。
 - **歌词编辑**：桌面版的歌词编辑器依赖 Scintilla。
 
+## 支持的音频格式
+
+devkitPro 的 `switch-sdl2_mixer` 是 **2.0.4**，实际编译进去的解码器可以用
+`nm libSDL2_mixer.a | grep Mix_MusicInterface_` 查到：
+
+| 格式 | 解码器 | 说明 |
+| --- | --- | --- |
+| mp3 | mpg123 | |
+| ogg / oga | vorbisidec（Tremor） | 整数解码，音质与官方 libvorbis 有极小差异 |
+| opus | opusfile | |
+| wav / aiff / aif | 内置 | |
+| mod / xm / s3m / it | modplug | |
+| mid / midi | timidity | 需要 GUS 音色库，见下 |
+
+**不支持 FLAC。** 该包构建时没有启用 FLAC（`music_flac.o` 在归档里但是空的），
+所以浏览界面不会列出 `.flac` 文件 —— 列出来只会点开就报错。桌面版靠 BASS 支持 FLAC，
+这是本移植版相对桌面版最明显的能力缺口。想要 FLAC 需要自行用启用 FLAC 的选项重新
+构建 `switch-sdl2_mixer`，或者接 libFLAC 自己做一路解码送进 `Mix_HookMusic`。
+
+MIDI 用的是 SDL_mixer 内置的 timidity，需要 SD 卡上有 GUS 音色库和 `timidity.cfg`
+才能出声，否则 `Mix_LoadMUS` 会失败。
+
 ## 已知限制
 
 - **定位精度**：SDL2_mixer 的 `Mix_GetMusicPosition` 对部分格式不可靠，因此播放位置由
   「定位基准 + 自行累计的经过时间」推算。长时间播放可能出现秒级漂移，切歌或定位后归零。
-- **时长探测**：`Mix_MusicDuration` 需要 SDL_mixer ≥ 2.6。低版本下首次播放时进度条无总时长，
-  播完一遍后才能拿到。
+- **时长探测**：`Mix_MusicDuration` 需要 SDL_mixer ≥ 2.6，而 devkitPro 提供的是 **2.0.4**，
+  所以这个接口**当前用不上**（代码里有版本守卫，会自动退化）。实际表现是：首次播放时
+  进度条没有总时长显示，播完一遍后才能反推出来。m3u 播放列表里的 `#EXTINF` 时长可以
+  作为补充来源。
 - **m3u 编码**：桌面版写的 `.m3u` 是 ANSI 编码。本移植版按 UTF-8 解释，
   非 ASCII 文件名的 `.m3u` 会乱码 —— 请改用 `.m3u8` 或 `.playlist`。
 - **扫描深度**：启动时扫描默认音乐目录限制 3 层，浏览界面的「播放整个目录」只收当前层，

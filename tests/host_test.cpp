@@ -353,10 +353,15 @@ static void TestMediaScanner()
     std::printf("MediaScanner\n");
 
     CHECK(CMediaScanner::IsSupportedAudio("a.mp3"));
-    CHECK(CMediaScanner::IsSupportedAudio("a.FLAC"));
+    CHECK(CMediaScanner::IsSupportedAudio("a.OGG"));            // 扩展名不区分大小写
     CHECK(CMediaScanner::IsSupportedAudio("a.opus"));
+    CHECK(CMediaScanner::IsSupportedAudio("a.wav"));
+    CHECK(CMediaScanner::IsSupportedAudio("a.it"));
     CHECK(!CMediaScanner::IsSupportedAudio("a.txt"));
     CHECK(!CMediaScanner::IsSupportedAudio("noext"));
+    // devkitPro 的 switch-sdl2_mixer 2.0.4 没有编译 FLAC 解码器，
+    // 因此不能把 .flac 列为可播放，否则浏览界面会显示一堆打不开的文件
+    CHECK(!CMediaScanner::IsSupportedAudio("a.flac"));
 
     SongInfo s;
     s.file_path = "sdmc:/music/周杰伦 - 晴天.mp3";
@@ -467,7 +472,7 @@ static void TestFileRoundTrip()
     std::string scan_dir = dir + "/scan";
     CHECK(FileUtil::WriteAll(scan_dir + "/x.mp3", "fake"));
     CHECK(FileUtil::WriteAll(scan_dir + "/readme.txt", "not audio"));
-    CHECK(FileUtil::WriteAll(scan_dir + "/nested/y.flac", "fake"));
+    CHECK(FileUtil::WriteAll(scan_dir + "/nested/y.ogg", "fake"));
     std::vector<SongInfo> scanned;
     CMediaScanner::ScanDirectory(scan_dir, scanned);
     CHECK_EQ_INT(scanned.size(), 2);

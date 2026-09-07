@@ -49,8 +49,9 @@ bool CAudioEngine::Init()
     if (Mix_QuerySpec(&frequency, &format, &channels))
         m_mix_channels = channels;
 
-    // 尽量把能用的解码器都初始化；失败的格式只是不可播放，不影响其它格式
-    const int wanted = MIX_INIT_MP3 | MIX_INIT_OGG | MIX_INIT_FLAC | MIX_INIT_OPUS | MIX_INIT_MOD;
+    // 只申请这个 SDL2_mixer 构建里真正带的解码器。
+    // devkitPro 的 switch-sdl2_mixer 2.0.4 没有编译 FLAC，申请 MIX_INIT_FLAC 只会白白失败。
+    const int wanted = MIX_INIT_MP3 | MIX_INIT_OGG | MIX_INIT_OPUS | MIX_INIT_MOD | MIX_INIT_MID;
     Mix_Init(wanted);
 
     Mix_SetPostMix(&CAudioEngine::PostMixCallback, this);

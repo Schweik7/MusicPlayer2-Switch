@@ -6,9 +6,17 @@
 
 const std::vector<std::string>& CMediaScanner::GetSupportedExtensions()
 {
-    // SDL2_mixer 在 devkitPro portlibs 中默认带 mpg123 / vorbis / opus / flac / modplug
+    // 这份列表对应 devkitPro 的 switch-sdl2_mixer 2.0.4 实际编译进去的解码器。
+    // 用 `nm libSDL2_mixer.a | grep Mix_MusicInterface_` 可以查到权威结果：
+    //     MPG123 / OGG / Opus / MODPLUG / TIMIDITY / WAV
+    //
+    // 注意没有 FLAC：music_flac.o 虽然在归档里但是空的，该包构建时没启用 FLAC。
+    // 桌面版靠 BASS 支持 FLAC，这里做不到，所以不把 flac 列进来 ——
+    // 列出来只会让用户在浏览界面看到一堆点开就报错的文件。
+    //
+    // mid/midi 走内置的 TIMIDITY，需要 SD 卡上有 GUS 音色库才能出声，详见 README。
     static const std::vector<std::string> exts{
-        "mp3", "ogg", "oga", "opus", "flac", "wav", "aiff", "aif",
+        "mp3", "ogg", "oga", "opus", "wav", "aiff", "aif",
         "mod", "xm", "s3m", "it", "mid", "midi"
     };
     return exts;

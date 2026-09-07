@@ -48,14 +48,19 @@ CXXFLAGS := $(CFLAGS) -std=gnu++17
 ASFLAGS := -g $(ARCH)
 LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-# 链接顺序很重要：SDL2 的各扩展库要排在 SDL2 之前，编解码库再排在扩展库之后。
-# curl 依赖 mbedtls 提供 TLS，三个 mbed* 库必须按 tls -> x509 -> crypto 的顺序排列。
+# 链接顺序很重要：SDL2 的各扩展库排在 SDL2 之前，编解码库再排在扩展库之后。
+# 这份列表来自 `pkg-config --static --libs SDL2_mixer SDL2_ttf SDL2_image libcurl`，
+# 不是照着常见写法猜的，几个容易踩的点：
+#   - devkitPro 的 SDL2_mixer 用 libvorbisidec（Tremor 整数解码），没有 libvorbis/libvorbisfile
+#   - SDL2_ttf 2.22 依赖 harfbuzz
+#   - 是 libpng16，不是 libpng
+#   - curl 依赖 mbedtls 提供 TLS，三个 mbed* 库按 tls -> x509 -> crypto 排列
 LIBS := -lSDL2_mixer -lSDL2_ttf -lSDL2_image -lSDL2 \
-        -lopusfile -lopus -lvorbisfile -lvorbis -logg -lmpg123 -lFLAC -lmodplug \
-        -lwebp -lpng -ljpeg -lfreetype -lbz2 \
+        -lopusfile -lopus -lvorbisidec -logg -lmpg123 -lmodplug \
+        -lwebp -ljpeg -lharfbuzz -lfreetype -lpng16 -lbz2 \
         -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz \
         -lEGL -lglapi -ldrm_nouveau \
-        -lnx -lm
+        -lnx -lm -lstdc++ -lpthread
 
 LIBDIRS := $(PORTLIBS) $(LIBNX)
 
@@ -88,8 +93,10 @@ export OFILES_SRC := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES     := $(OFILES_BIN) $(OFILES_SRC)
 export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
 
+# 第三方头文件用 -isystem 引入：libnx 和 SDL 的头在 -Wextra 下会刷屏，
+# 而那些警告我们既改不了也不关心。自己的代码仍然是 -I，警告照常报出来。
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
-                  $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+                  $(foreach dir,$(LIBDIRS),-isystem $(dir)/include) \
                   -I$(CURDIR)/$(BUILD)
 
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
