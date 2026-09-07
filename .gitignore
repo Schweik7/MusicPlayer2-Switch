@@ -1,0 +1,10 @@
+# devkitPro 构建产物
+build/
+*.nro
+*.nso
+*.nacp
+*.elf
+*.map
+
+# 主机端测试产物
+tests/build/
