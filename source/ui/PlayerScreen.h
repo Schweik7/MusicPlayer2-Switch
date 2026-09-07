@@ -18,6 +18,9 @@ public:
 
     void OnEnter(ScreenContext& ctx) override;
     void ReleaseResources(ScreenContext& ctx) override;
+
+    // 封面文件在外部被改写（下载完成）后调用，强制下一帧重新加载
+    void InvalidateCover(ScreenContext& ctx);
     void Update(ScreenContext& ctx, double delta_seconds) override;
     void Draw(ScreenContext& ctx) override;
 

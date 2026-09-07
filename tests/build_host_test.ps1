@@ -6,7 +6,9 @@
 $ErrorActionPreference = 'Stop'
 
 $testDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$coreDir = Join-Path (Split-Path -Parent $testDir) 'source/core'
+$srcDir  = Join-Path (Split-Path -Parent $testDir) 'source'
+$coreDir = Join-Path $srcDir 'core'
+$netDir  = Join-Path $srcDir 'net'
 $outDir  = Join-Path $testDir 'build'
 
 $vswhere = Join-Path (Get-Item 'Env:ProgramFiles(x86)').Value 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -17,8 +19,12 @@ if (-not (Test-Path $vcvars)) { throw "找不到 vcvars64.bat：$vcvars" }
 
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 
+# 注意：HttpClient.cpp 不在列表里 —— 它依赖 libnx 和 libcurl，只能在 Switch 上编译。
+# 测试通过 IHttpClient 接口注入假实现来覆盖下载流程。
 $sources = @(
     (Join-Path $testDir 'host_test.cpp')
+    (Join-Path $testDir 'net_test.cpp')
+    (Join-Path $testDir 'TestFramework.cpp')
     (Join-Path $coreDir 'StringUtil.cpp')
     (Join-Path $coreDir 'FileUtil.cpp')
     (Join-Path $coreDir 'SongInfo.cpp')
@@ -27,6 +33,11 @@ $sources = @(
     (Join-Path $coreDir 'LrcParser.cpp')
     (Join-Path $coreDir 'MediaScanner.cpp')
     (Join-Path $coreDir 'Config.cpp')
+    (Join-Path $netDir  'Json.cpp')
+    (Join-Path $netDir  'UrlUtil.cpp')
+    (Join-Path $netDir  'SongMatcher.cpp')
+    (Join-Path $netDir  'LyricProvider.cpp')
+    (Join-Path $netDir  'DownloadManager.cpp')
 ) | ForEach-Object { "`"$_`"" }
 
 # /utf-8 让源码里的 u8"" 字面量按 UTF-8 处理；/EHsc 开启标准异常模型

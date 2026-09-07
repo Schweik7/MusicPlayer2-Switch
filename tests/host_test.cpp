@@ -12,50 +12,13 @@
 #include "../source/core/PlayTime.h"
 #include "../source/core/StringUtil.h"
 
+#include "TestFramework.h"
+
 #include <cstdio>
 #include <string>
 
-static int g_failed = 0;
-static int g_total = 0;
-
-static void Check(bool condition, const char* expr, const char* file, int line)
-{
-    ++g_total;
-    if (!condition)
-    {
-        ++g_failed;
-        std::printf("  [FAIL] %s  (%s:%d)\n", expr, file, line);
-    }
-}
-
-#define CHECK(expr) Check((expr), #expr, __FILE__, __LINE__)
-
-static void CheckEq(const std::string& actual, const std::string& expected, const char* expr,
-                    const char* file, int line)
-{
-    ++g_total;
-    if (actual != expected)
-    {
-        ++g_failed;
-        std::printf("  [FAIL] %s\n         expected: \"%s\"\n         actual:   \"%s\"  (%s:%d)\n",
-                    expr, expected.c_str(), actual.c_str(), file, line);
-    }
-}
-
-#define CHECK_EQ(actual, expected) CheckEq((actual), (expected), #actual, __FILE__, __LINE__)
-
-static void CheckEqInt(long long actual, long long expected, const char* expr, const char* file, int line)
-{
-    ++g_total;
-    if (actual != expected)
-    {
-        ++g_failed;
-        std::printf("  [FAIL] %s\n         expected: %lld\n         actual:   %lld  (%s:%d)\n",
-                    expr, expected, actual, file, line);
-    }
-}
-
-#define CHECK_EQ_INT(actual, expected) CheckEqInt((actual), (expected), #actual, __FILE__, __LINE__)
+// 在 net_test.cpp 中实现
+void RunNetTests();
 
 // ---------------------------------------------------------------- StringUtil
 
@@ -536,6 +499,8 @@ static void TestFileRoundTrip()
 
 int main()
 {
+    // 关掉缓冲：测试崩溃时也能看到已经跑到哪一步
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::printf("=== MusicPlayer2 for Switch - 核心层测试 ===\n\n");
 
     TestStringUtil();
@@ -548,8 +513,13 @@ int main()
     TestConfig();
     TestFileRoundTrip();
 
-    std::printf("\n=== %d/%d 通过 ===\n", g_total - g_failed, g_total);
-    if (g_failed > 0)
-        std::printf("*** %d 个断言失败 ***\n", g_failed);
-    return g_failed == 0 ? 0 : 1;
+    std::printf("\n--- 在线下载 ---\n");
+    RunNetTests();
+
+    const int total = TestFramework::g_total;
+    const int failed = TestFramework::g_failed;
+    std::printf("\n=== %d/%d 通过 ===\n", total - failed, total);
+    if (failed > 0)
+        std::printf("*** %d 个断言失败 ***\n", failed);
+    return failed == 0 ? 0 : 1;
 }

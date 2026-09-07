@@ -10,6 +10,7 @@ enum ScreenId
     SCREEN_PLAYER = 0,      // 播放界面（歌词 / 频谱）
     SCREEN_PLAYLIST,        // 当前播放列表
     SCREEN_BROWSER,         // SD 卡文件浏览
+    SCREEN_DOWNLOAD,        // 在线歌词/封面下载
     SCREEN_COUNT,
     SCREEN_NONE = -1
 };

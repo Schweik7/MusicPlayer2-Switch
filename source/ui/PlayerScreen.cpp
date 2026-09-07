@@ -23,6 +23,17 @@ void CPlayerScreen::ReleaseResources(ScreenContext& ctx)
     m_cover_source.clear();
 }
 
+void CPlayerScreen::InvalidateCover(ScreenContext& ctx)
+{
+    if (m_cover != nullptr)
+    {
+        ctx.renderer->FreeTexture(m_cover);
+        m_cover = nullptr;
+    }
+    // 清掉来源路径，RefreshCover 下次就会认为需要重新加载
+    m_cover_source.clear();
+}
+
 void CPlayerScreen::OnEnter(ScreenContext& ctx)
 {
     RefreshCover(ctx);
@@ -32,7 +43,8 @@ void CPlayerScreen::OnEnter(ScreenContext& ctx)
 
 const char* CPlayerScreen::GetButtonHints() const
 {
-    return "A 播放/暂停   L/R 上下曲   ZL/ZR 快退/快进   X 切换视图   Y 播放模式   - 播放列表";
+    return "A 播放/暂停   L/R 上下曲   ZL/ZR 快退/快进   X 切换视图   Y 播放模式   "
+           "B+Y 在线下载   - 播放列表";
 }
 
 void CPlayerScreen::RefreshCover(ScreenContext& ctx)
@@ -74,7 +86,8 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
     if (input.IsDown(CInputMap::BTN_X))
         m_view = static_cast<ViewMode>((m_view + 1) % VIEW_COUNT);
 
-    if (input.IsDown(CInputMap::BTN_Y))
+    // 按住 B 时 Y 是"打开下载界面"，这里要让开
+    if (input.IsDown(CInputMap::BTN_Y) && !input.IsHeld(CInputMap::BTN_B))
     {
         player.SwitchRepeatMode();
         ctx.ShowToast(CPlayer::GetRepeatModeName(player.GetRepeatMode()));
@@ -114,7 +127,8 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         m_seeking = false;
     }
 
-    // B 键在播放界面用于调整歌词偏移（配合方向键左右）
+    // B 键在播放界面用于调整歌词偏移（配合方向键左右），
+    // 以及打开在线下载界面（B + Y）
     if (input.IsHeld(CInputMap::BTN_B))
     {
         if (input.IsRepeat(CInputMap::BTN_RIGHT))
@@ -126,6 +140,13 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         {
             player.AdjustLyricOffset(-500);
             ctx.ShowToast("歌词提前 0.5 秒");
+        }
+        if (input.IsDown(CInputMap::BTN_Y))
+        {
+            if (player.GetCurrentSong().file_path.empty())
+                ctx.ShowToast("没有正在播放的曲目");
+            else
+                ctx.next_screen = SCREEN_DOWNLOAD;
         }
     }
 

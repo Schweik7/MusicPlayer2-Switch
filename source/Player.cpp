@@ -52,6 +52,11 @@ bool CPlayer::Init()
         return false;
     }
 
+    // 网络是可选的：初始化失败只是用不了在线下载，不该拦住播放器启动
+    m_network_ready = m_http.Init();
+    if (m_network_ready)
+        m_downloader.SetHttpClient(&m_http);
+
     ApplyConfig();
     return true;
 }
@@ -59,7 +64,17 @@ bool CPlayer::Init()
 void CPlayer::Uninit()
 {
     SaveConfig();
+    // 必须等下载线程真正退出再关网络栈，否则它可能在 curl 已经清理后还在用它
+    m_downloader.WaitForCompletion();
+    m_downloader.SetHttpClient(nullptr);
+    m_http.Uninit();
+    m_network_ready = false;
     m_audio.Uninit();
+}
+
+bool CPlayer::IsNetworkReady() const
+{
+    return m_network_ready && CCurlHttpClient::IsNetworkAvailable();
 }
 
 void CPlayer::ApplyConfig()

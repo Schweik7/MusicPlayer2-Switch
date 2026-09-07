@@ -4,6 +4,8 @@
 #include "core/LrcParser.h"
 #include "core/PathMapper.h"
 #include "core/SongInfo.h"
+#include "net/DownloadManager.h"
+#include "net/HttpClient.h"
 
 #include <string>
 #include <vector>
@@ -67,6 +69,14 @@ public:
     CAudioEngine& GetAudio() { return m_audio; }
     CConfig& GetConfig() { return m_config; }
     CPathMapper& GetPathMapper() { return m_path_mapper; }
+    CDownloadManager& GetDownloader() { return m_downloader; }
+
+    // ---- 在线下载 ----
+    // 网络是可选功能：初始化失败不影响播放，只是下载界面会提示不可用
+    bool IsNetworkReady() const;
+    bool IsCertVerified() const { return m_http.IsCertVerified(); }
+    // 下载完成后重新加载本地歌词，让新歌词立刻生效
+    void ReloadLyric() { LoadLyricForCurrentSong(); }
 
     // 每帧调用：处理自然播放结束、写回配置
     void Update();
@@ -90,6 +100,12 @@ private:
     CConfig m_config;
     CPathMapper m_path_mapper;
     CLrcParser m_lyrics;
+
+    // 声明顺序有意为之：m_downloader 持有 m_http 的裸指针，
+    // 必须先于 m_http 析构，因此要声明在它后面
+    CCurlHttpClient m_http;
+    CDownloadManager m_downloader;
+    bool m_network_ready{};
 
     std::vector<SongInfo> m_playlist;
     std::vector<int> m_shuffle_order;       // 随机播放的顺序表，保证一轮内不重复

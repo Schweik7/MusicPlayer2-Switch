@@ -18,6 +18,25 @@
 namespace FileUtil
 {
 
+#ifdef _WIN32
+namespace
+{
+    // Windows 的窄字符 CRT 接口按 ANSI 代码页解释路径，UTF-8 的中文文件名会打不开。
+    // Switch 上的 newlib 直接吃 UTF-8，没有这个问题，所以转换只在 Windows 分支里做。
+    std::wstring ToWide(const std::string& utf8)
+    {
+        std::u16string u16 = StringUtil::Utf8ToUtf16(utf8);
+        return std::wstring(u16.begin(), u16.end());
+    }
+
+    std::string FromWide(const wchar_t* wide)
+    {
+        std::u16string u16(reinterpret_cast<const char16_t*>(wide));
+        return StringUtil::Utf16ToUtf8(u16);
+    }
+}
+#endif
+
 std::string NormalizeSeparators(std::string path)
 {
     for (char& c : path)
@@ -165,22 +184,44 @@ std::string RelativeToAbsolute(const std::string& path, const std::string& base_
 
 bool Exists(const std::string& path)
 {
+#ifdef _WIN32
+    struct _stat64 st{};
+    return ::_wstat64(ToWide(path).c_str(), &st) == 0;
+#else
     struct stat st{};
     return ::stat(path.c_str(), &st) == 0;
+#endif
 }
 
 bool IsDirectory(const std::string& path)
 {
+#ifdef _WIN32
+    struct _stat64 st{};
+    if (::_wstat64(ToWide(path).c_str(), &st) != 0)
+        return false;
+#else
     struct stat st{};
     if (::stat(path.c_str(), &st) != 0)
         return false;
+#endif
     return (st.st_mode & S_IFDIR) != 0;
+}
+
+// 打开文件的统一入口，隔离掉 Windows 的宽字符差异
+static FILE* OpenFile(const std::string& path, const char* mode)
+{
+#ifdef _WIN32
+    std::wstring wide_mode(mode, mode + std::char_traits<char>::length(mode));
+    return ::_wfopen(ToWide(path).c_str(), wide_mode.c_str());
+#else
+    return std::fopen(path.c_str(), mode);
+#endif
 }
 
 bool ReadAll(const std::string& path, std::string& content)
 {
     content.clear();
-    FILE* fp = std::fopen(path.c_str(), "rb");
+    FILE* fp = OpenFile(path, "rb");
     if (fp == nullptr)
         return false;
 
@@ -202,7 +243,7 @@ bool WriteAll(const std::string& path, const std::string& content)
     if (!dir.empty() && !Exists(dir))
         CreateDirRecursive(dir);
 
-    FILE* fp = std::fopen(path.c_str(), "wb");
+    FILE* fp = OpenFile(path, "wb");
     if (fp == nullptr)
         return false;
     size_t written = content.empty() ? 0 : std::fwrite(content.data(), 1, content.size(), fp);
@@ -235,7 +276,7 @@ bool CreateDirRecursive(const std::string& dir)
             if (!Exists(sub))
             {
 #ifdef _WIN32
-                if (::_mkdir(sub.c_str()) != 0)
+                if (::_wmkdir(ToWide(sub).c_str()) != 0)
                     return false;
 #else
                 if (::mkdir(sub.c_str(), 0777) != 0)
@@ -252,20 +293,20 @@ bool ListDir(const std::string& dir, std::vector<DirEntry>& entries)
     entries.clear();
 
 #ifdef _WIN32
-    WIN32_FIND_DATAA find_data{};
-    HANDLE handle = ::FindFirstFileA(Combine(dir, "*").c_str(), &find_data);
+    WIN32_FIND_DATAW find_data{};
+    HANDLE handle = ::FindFirstFileW(ToWide(Combine(dir, "*")).c_str(), &find_data);
     if (handle == INVALID_HANDLE_VALUE)
         return false;
     do
     {
-        std::string name = find_data.cFileName;
+        std::string name = FromWide(find_data.cFileName);
         if (name == "." || name == "..")
             continue;
         DirEntry entry;
         entry.name = name;
         entry.is_dir = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
         entries.push_back(entry);
-    } while (::FindNextFileA(handle, &find_data));
+    } while (::FindNextFileW(handle, &find_data));
     ::FindClose(handle);
 #else
     DIR* handle = ::opendir(dir.c_str());

@@ -23,7 +23,7 @@ APP_VERSION := 1.0.0
 
 TARGET      := MusicPlayer2
 BUILD       := build
-SOURCES     := source source/core source/audio source/ui source/input
+SOURCES     := source source/core source/audio source/ui source/input source/net
 DATA        := data
 INCLUDES    := source
 ROMFS       := romfs
@@ -48,10 +48,12 @@ CXXFLAGS := $(CFLAGS) -std=gnu++17
 ASFLAGS := -g $(ARCH)
 LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-# 链接顺序很重要：SDL2 的各扩展库要排在 SDL2 之前，编解码库再排在扩展库之后
+# 链接顺序很重要：SDL2 的各扩展库要排在 SDL2 之前，编解码库再排在扩展库之后。
+# curl 依赖 mbedtls 提供 TLS，三个 mbed* 库必须按 tls -> x509 -> crypto 的顺序排列。
 LIBS := -lSDL2_mixer -lSDL2_ttf -lSDL2_image -lSDL2 \
         -lopusfile -lopus -lvorbisfile -lvorbis -logg -lmpg123 -lFLAC -lmodplug \
-        -lwebp -lpng -ljpeg -lfreetype -lbz2 -lz \
+        -lwebp -lpng -ljpeg -lfreetype -lbz2 \
+        -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz \
         -lEGL -lglapi -ldrm_nouveau \
         -lnx -lm
 

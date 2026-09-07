@@ -28,6 +28,7 @@ bool CApp::Init()
     m_screens[SCREEN_PLAYER] = &m_player_screen;
     m_screens[SCREEN_PLAYLIST] = &m_playlist_screen;
     m_screens[SCREEN_BROWSER] = &m_browser_screen;
+    m_screens[SCREEN_DOWNLOAD] = &m_download_screen;
 
     m_ctx.player = &m_player;
     m_ctx.renderer = &m_renderer;
@@ -64,6 +65,26 @@ void CApp::RestoreLastSession()
     CMediaScanner::ScanDirectory(music_dir, songs, 3);      // 限制 3 层，避免开机卡太久
     if (!songs.empty())
         m_player.SetPlaylist(std::move(songs), 0, false);
+}
+
+void CApp::HandleDownloadResult()
+{
+    CDownloadManager::Status status = m_player.GetDownloader().Poll();
+    if (static_cast<int>(status.state) == m_last_download_state)
+        return;
+    m_last_download_state = static_cast<int>(status.state);
+
+    if (status.state != CDownloadManager::ST_SUCCESS)
+        return;
+
+    // 新歌词写在当前曲目旁边时，立刻重新加载让它生效
+    if (!status.saved_lyric_path.empty())
+        m_player.ReloadLyric();
+    // 封面由 CPlayerScreen 按文件路径缓存，这里让它下一帧重新读取
+    if (!status.saved_cover_path.empty())
+        m_player_screen.InvalidateCover(m_ctx);
+
+    m_ctx.ShowToast(status.message);
 }
 
 void CApp::SwitchScreen(ScreenId id)
@@ -152,6 +173,7 @@ void CApp::Run()
 
         m_player.Update();
         m_player.GetAudio().GetSpectrum().Update(delta_seconds);
+        HandleDownloadResult();
 
         m_ctx.next_screen = SCREEN_NONE;
         m_screens[m_current]->Update(m_ctx, delta_seconds);
