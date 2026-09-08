@@ -5,6 +5,7 @@
 #include "../core/FileUtil.h"
 #include "../core/VersionUtil.h"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -27,6 +28,24 @@ namespace
                   && (std::fread(magic, 1, 4, fp) == 4);
         std::fclose(fp);
         return ok && magic[0] == 'N' && magic[1] == 'R' && magic[2] == 'O' && magic[3] == '0';
+    }
+
+    // 把源文件挪到目标位置：先试改名，不行就复制后删源文件。
+    // 单靠 rename 在实机上会失败（用户遇到过"无法备份当前版本"），
+    // Switch 的 FS 层对改名的支持并不可靠，复制慢一些但一定能用。
+    bool MoveOrCopy(const std::string& src, const std::string& dst)
+    {
+        std::remove(dst.c_str());
+        if (std::rename(src.c_str(), dst.c_str()) == 0)
+        {
+            FileUtil::CommitDevice(dst);
+            return true;
+        }
+        if (!FileUtil::CopyFileTo(src, dst))
+            return false;
+        std::remove(src.c_str());
+        FileUtil::CommitDevice(dst);
+        return true;
     }
 
 }
@@ -212,22 +231,26 @@ void CUpdater::DoInstall()
         return;
     }
 
-    // 替换自身。先把旧文件改名备份，确认新文件就位后再删备份；
+    // 替换自身。先把旧文件挪到备份名，确认新文件就位后再删备份；
     // 中途任何一步失败都要把旧文件放回去，否则程序就没了。
+    //
+    // 改名和复制都试：实机上 std::rename 会失败（用户遇到过"无法备份当前版本"），
+    // Switch 的 FS 层对改名的支持并不可靠。复制慢一些但一定能用。
     std::remove(backup_path.c_str());
     bool had_old = FileUtil::Exists(m_self_path);
-    if (had_old && std::rename(m_self_path.c_str(), backup_path.c_str()) != 0)
+    if (had_old && !MoveOrCopy(m_self_path, backup_path))
     {
         std::remove(temp_path.c_str());
-        SetStatus(ST_FAILED, "无法备份当前版本，已放弃更新");
+        SetStatus(ST_FAILED, "无法备份当前版本，已放弃更新（errno=" + std::to_string(errno) + "）");
         return;
     }
-    if (std::rename(temp_path.c_str(), m_self_path.c_str()) != 0)
+    if (!MoveOrCopy(temp_path, m_self_path))
     {
         if (had_old)
-            std::rename(backup_path.c_str(), m_self_path.c_str());   // 回滚
+            MoveOrCopy(backup_path, m_self_path);       // 回滚
         std::remove(temp_path.c_str());
-        SetStatus(ST_FAILED, "无法写入新版本，已还原原有版本");
+        SetStatus(ST_FAILED, "无法写入新版本，已还原原有版本（errno="
+                             + std::to_string(errno) + "）");
         return;
     }
     std::remove(backup_path.c_str());

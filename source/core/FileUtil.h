@@ -35,6 +35,9 @@ namespace FileUtil
     bool ReadTail(const std::string& path, size_t bytes, std::string& content);
     bool WriteAll(const std::string& path, const std::string& content);
     bool CreateDirRecursive(const std::string& dir);
+    // 按字节复制。用于 rename 不可用时的退路（Switch 的 FS 层对改名的支持
+    // 并不总是可靠），代价是多一遍读写。
+    bool CopyFileTo(const std::string& src, const std::string& dst);
 
     // 把写入提交到存储设备。
     //

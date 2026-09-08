@@ -247,7 +247,8 @@ bool CDownloadManager::StartAutoDownload(const std::string& keyword, const AutoR
 
             std::string file_name = FileUtil::GetFileNameWithoutExt(request.audio_file_path);
             int matched = SongMatcher::SelectMatchedItem(m_status.results, request.title,
-                                                         request.artist, request.album, file_name);
+                                                         request.artist, request.album, file_name,
+                                                         request.duration_ms);
             if (matched < 0)
             {
                 m_status.state = ST_FAILED;

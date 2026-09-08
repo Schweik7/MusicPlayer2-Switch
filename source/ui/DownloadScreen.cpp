@@ -61,6 +61,9 @@ CDownloadManager::AutoRequest CDownloadScreen::MakeRequest(ScreenContext& ctx) c
     request.title = song.title;
     request.artist = song.artist;
     request.album = song.album;
+    // 带上正在播放这首的时长：同名的不同版本（Live / 伴奏 / 加长版）
+    // 光看标题和艺术家分不出来，时长却一目了然
+    request.duration_ms = ctx.player->GetLength();
     request.download_lyric = m_download_lyric;
     request.download_cover = m_download_cover;
     request.with_translation = ctx.player->GetConfig().GetShowTranslation();

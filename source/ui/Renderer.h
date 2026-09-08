@@ -67,6 +67,9 @@ public:
     int  DrawTextEllipsis(const std::string& utf8, int x, int y, int max_width, FontSize size,
                           Color color, Align align = ALIGN_LEFT);
     void MeasureText(const std::string& utf8, FontSize size, int& width, int& height);
+    // 按最大宽度折行。优先在空格处断，中日韩没有空格则允许在任意字符间断。
+    // 返回的每一段都保证不超过 max_width（单个字符本身就超宽时除外）。
+    std::vector<std::string> WrapText(const std::string& utf8, FontSize size, int max_width);
     int  GetLineHeight(FontSize size) const;
 
     // ---- 图片 ----

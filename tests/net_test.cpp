@@ -206,6 +206,39 @@ static void TestSongMatcher()
     CHECK_EQ_INT(SongMatcher::SelectMatchedItem(unrelated, "aaaaaaaa", "bbbbbbbb",
                                                 "cccccccc", "dddddddd"), -1);
 
+
+    // ---- 时长参与匹配 ----
+    // 同名的不同版本（Live / 加长版）光看文字分不出来，时长却一目了然
+    CHECK_NEAR(SongMatcher::DurationSimilarDegree(200000, 200000), 1.0, 1e-9);
+    CHECK_NEAR(SongMatcher::DurationSimilarDegree(200000, 201500), 1.0, 1e-9);  // 2 秒内算一致
+    CHECK_NEAR(SongMatcher::DurationSimilarDegree(200000, 220000), 0.0, 1e-9);  // 差 20 秒
+    CHECK(SongMatcher::DurationSimilarDegree(200000, 206000) > 0.4);            // 中间线性过渡
+    CHECK(SongMatcher::DurationSimilarDegree(200000, 206000) < 0.8);
+    // 任一侧未知时不参与打分
+    CHECK_NEAR(SongMatcher::DurationSimilarDegree(0, 200000), 0.0, 1e-9);
+    CHECK_NEAR(SongMatcher::DurationSimilarDegree(200000, 0), 0.0, 1e-9);
+
+    // 标题艺术家完全相同、只有时长能区分的两项：必须选中时长接近的那个
+    std::vector<DownloadItem> versions;
+    DownloadItem studio; studio.title = u8"晴天"; studio.artist = u8"周杰伦"; studio.duration = 269000;
+    DownloadItem live;   live.title = u8"晴天";   live.artist = u8"周杰伦";   live.duration = 335000;
+    versions.push_back(live);       // 把不匹配的放前面，排序加权也不该让它胜出
+    versions.push_back(studio);
+    int picked = SongMatcher::SelectMatchedItem(versions, u8"晴天", u8"周杰伦", "",
+                                                u8"周杰伦 - 晴天", 269000);
+    CHECK_EQ_INT(picked, 1);
+    // 本地时长未知时退回原来的行为（此时排序加权让第一项胜出）
+    int no_duration = SongMatcher::SelectMatchedItem(versions, u8"晴天", u8"周杰伦", "",
+                                                     u8"周杰伦 - 晴天", 0);
+    CHECK_EQ_INT(no_duration, 0);
+
+    // 时长碰巧一致但文字毫不相干，仍然不该被选中
+    std::vector<DownloadItem> wrong;
+    DownloadItem w; w.title = "zzzzzzzz"; w.artist = "yyyyyyyy"; w.duration = 269000;
+    wrong.push_back(w);
+    CHECK_EQ_INT(SongMatcher::SelectMatchedItem(wrong, "aaaaaaaa", "bbbbbbbb", "cccccccc",
+                                                "dddddddd", 269000), -1);
+
     CHECK_EQ(a.GetDisplayName(), u8"周杰伦 - 晴天");
     DownloadItem no_artist; no_artist.title = "Solo";
     CHECK_EQ(no_artist.GetDisplayName(), "Solo");

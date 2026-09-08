@@ -53,6 +53,8 @@ private:
                        int max_width, bool is_current, int position);
     void DrawSpectrumView(ScreenContext& ctx, int x, int y, int width, int height);
     void DrawVolumeOverlay(ScreenContext& ctx);
+    // 封面全屏查看：点封面进入，再点一下或按 B 退出
+    void DrawCoverFullscreen(ScreenContext& ctx);
 
     void HandleTouch(ScreenContext& ctx);
     // 进度条上要显示的位置：正常是播放位置，拖动时是拖到的位置
@@ -72,6 +74,7 @@ private:
     bool m_seeking{};                       // 右摇杆拖动进度中
     double m_seek_accumulator{};
 
+    bool m_cover_fullscreen{};              // 封面全屏查看中
     bool m_touch_seeking{};                 // 手指按在进度条上拖动中
     int  m_touch_seek_ms{};
     HitButton m_pressed_button{ HIT_NONE }; // 当前被手指按住的按钮，用于按下态高亮

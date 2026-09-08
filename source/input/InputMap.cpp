@@ -52,9 +52,12 @@ namespace
         case CInputMap::BTN_DPAD_DOWN:  return HidNpadButton_Down;
         case CInputMap::BTN_DPAD_LEFT:  return HidNpadButton_Left;
         case CInputMap::BTN_DPAD_RIGHT: return HidNpadButton_Right;
-        case CInputMap::BTN_STICK_UP:   return HidNpadButton_StickLUp;
-        case CInputMap::BTN_STICK_DOWN: return HidNpadButton_StickLDown;
+        case CInputMap::BTN_STICK_UP:    return HidNpadButton_StickLUp;
+        case CInputMap::BTN_STICK_DOWN:  return HidNpadButton_StickLDown;
+        case CInputMap::BTN_STICK_LEFT:  return HidNpadButton_StickLLeft;
+        case CInputMap::BTN_STICK_RIGHT: return HidNpadButton_StickLRight;
         case CInputMap::BTN_STICK_L:  return HidNpadButton_StickL;
+        case CInputMap::BTN_STICK_R:  return HidNpadButton_StickR;
         default:                      return 0;
         }
     }

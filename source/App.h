@@ -1,6 +1,7 @@
 #pragma once
 #include "Player.h"
 #include "ScreenDimmer.h"
+#include "core/LibraryScanner.h"
 #include "net/Updater.h"
 #include "input/InputMap.h"
 #include "ui/BrowserScreen.h"
@@ -29,6 +30,7 @@ private:
     void SwitchScreen(ScreenId id);
     // 顶栏上的触摸按钮在任何界面下都有效，所以放在 App 这一层处理
     void HandleHeaderTouch();
+    void ToggleTouchEnabled();
     void DrawHeader();
     void DrawFooter();
     void DrawToast(double delta_seconds);
@@ -38,11 +40,14 @@ private:
     void RestoreLastSession();
     // 下载完成后让新歌词/新封面立刻生效
     void HandleDownloadResult();
+    // 后台扫描完成后把结果接进播放列表
+    void HandleScanResult();
 
     CRenderer m_renderer;
     CPlayer m_player;
     CInputMap m_input;
     CScreenDimmer m_dimmer;
+    CLibraryScanner m_scanner;
     CUpdater m_updater;
 
     CPlayerScreen m_player_screen;
@@ -66,4 +71,5 @@ private:
     std::string m_self_path;
     // 上一帧观察到的下载状态，用于识别"刚刚完成"这个瞬间
     int m_last_download_state{};
+    uint32_t m_scan_start_ticks{};
 };

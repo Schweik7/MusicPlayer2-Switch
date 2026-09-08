@@ -288,6 +288,71 @@ TTF_Font* CRenderer::PickFont(FontSize size, char32_t code_point) const
     return chain.fonts.front();
 }
 
+std::vector<std::string> CRenderer::WrapText(const std::string& utf8, FontSize size,
+                                             int max_width)
+{
+    std::vector<std::string> result;
+    if (utf8.empty() || max_width <= 0)
+    {
+        result.push_back(utf8);
+        return result;
+    }
+
+    int total_w = 0, total_h = 0;
+    MeasureText(utf8, size, total_w, total_h);
+    if (total_w <= max_width)
+    {
+        result.push_back(utf8);
+        return result;
+    }
+
+    std::string line;
+    // last_break 记录当前行里最后一个可断点（空格之后）的字节位置。
+    // 中日韩没有空格，找不到可断点时就在当前字符处硬断——总比截断成省略号强。
+    size_t last_break = std::string::npos;
+
+    size_t i = 0;
+    while (i < utf8.size())
+    {
+        size_t len = StringUtil::Utf8CharLen(utf8, i);
+        std::string ch = utf8.substr(i, len);
+        i += len;
+
+        std::string candidate = line + ch;
+        int w = 0, h = 0;
+        MeasureText(candidate, size, w, h);
+
+        if (w > max_width && !line.empty())
+        {
+            if (last_break != std::string::npos && last_break > 0)
+            {
+                // 回退到最近的空格处断行，把剩下的字放回下一行
+                result.push_back(StringUtil::Trimmed(line.substr(0, last_break)));
+                line = line.substr(last_break) + ch;
+            }
+            else
+            {
+                result.push_back(line);
+                line = ch;
+            }
+            last_break = std::string::npos;
+        }
+        else
+        {
+            line = candidate;
+        }
+
+        if (ch == " ")
+            last_break = line.size();
+    }
+
+    if (!line.empty())
+        result.push_back(StringUtil::Trimmed(line));
+    if (result.empty())
+        result.push_back(utf8);
+    return result;
+}
+
 int CRenderer::GetFontChainSize(FontSize size) const
 {
     return static_cast<int>(m_font_chains[size].fonts.size());

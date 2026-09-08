@@ -79,6 +79,10 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
                                                                  : "单栏（译文在下方）";
     m_rows[ITEM_LYRIC_LAYOUT].actionable = true;
 
+    m_rows[ITEM_BROWSE].label = "浏览 SD 卡";
+    m_rows[ITEM_BROWSE].value = "选择要播放的目录";
+    m_rows[ITEM_BROWSE].actionable = true;
+
     m_rows[ITEM_MUSIC_DIR].label = "默认音乐目录";
     m_rows[ITEM_MUSIC_DIR].value = config.GetMusicDir();
     m_rows[ITEM_MUSIC_DIR].actionable = false;
@@ -164,6 +168,9 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         }
         break;
     }
+    case ITEM_BROWSE:
+        ctx.next_screen = SCREEN_BROWSER;
+        break;
     case ITEM_ABOUT:
         m_show_about = true;
         break;

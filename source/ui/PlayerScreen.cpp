@@ -10,6 +10,7 @@
 namespace
 {
     const int kSeekStep = 5000;             // ZL/ZR 快进快退步长（毫秒）
+    const int kFineSeekStep = 1000;         // 左摇杆左右：逐秒微调
     const int kVolumeStep = 5;
 
     // 左栏布局。逻辑分辨率固定 1280x720，所以直接写成常量，
@@ -86,8 +87,8 @@ void CPlayerScreen::OnEnter(ScreenContext& ctx)
 const char* CPlayerScreen::GetButtonHints() const
 {
     // 走带控制不写在这里：屏幕上的十字按钮与方向键一一对应，本身就是说明
-    return "ZL/ZR 快退/快进   摇杆↑↓ 音量   X 视图   Y 模式   "
-           "B+Y 下载   - 列表   + 浏览   B++ 设置";
+    return "ZL/ZR ±5秒   摇杆←→ ±1秒   摇杆↑↓ 音量   X 视图   Y 模式   "
+           "按下右摇杆 下载   − 列表   ＋ 设置";
 }
 
 void CPlayerScreen::RefreshCover(ScreenContext& ctx)
@@ -113,6 +114,21 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
 
     RefreshCover(ctx);
 
+    // 封面全屏查看时只接受"退出"，避免误触其它功能
+    if (m_cover_fullscreen)
+    {
+        const CInputMap::TouchState& touch = input.GetTouch();
+        if (input.IsDown(CInputMap::BTN_B) || input.IsDown(CInputMap::BTN_A)
+            || (touch.released && !touch.IsDrag()))
+        {
+            m_cover_fullscreen = false;
+        }
+        // 封面丢了（换歌）就自动退出，否则会停在一个空白页面上
+        if (m_cover == nullptr)
+            m_cover_fullscreen = false;
+        return;
+    }
+
     if (input.IsDown(CInputMap::BTN_A))
         player.PlayOrPause();
 
@@ -129,8 +145,7 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
     if (input.IsDown(CInputMap::BTN_X))
         m_view = static_cast<ViewMode>((m_view + 1) % VIEW_COUNT);
 
-    // 按住 B 时 Y 是"打开下载界面"，这里要让开
-    if (input.IsDown(CInputMap::BTN_Y) && !input.IsHeld(CInputMap::BTN_B))
+    if (input.IsDown(CInputMap::BTN_Y))
     {
         player.SwitchRepeatMode();
         ctx.ShowToast(CPlayer::GetRepeatModeName(player.GetRepeatMode()));
@@ -138,8 +153,18 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
 
     if (input.IsDown(CInputMap::BTN_MINUS))
         ctx.next_screen = SCREEN_PLAYLIST;
-    if (input.IsDown(CInputMap::BTN_PLUS) && !input.IsHeld(CInputMap::BTN_B))
-        ctx.next_screen = SCREEN_BROWSER;
+    if (input.IsDown(CInputMap::BTN_PLUS))
+        ctx.next_screen = SCREEN_SETTINGS;
+
+    // 按下右摇杆：在线下载歌词封面。
+    // 原来是 B+Y 组合键，组合键既难记也难按，改成一个独立的键
+    if (input.IsDown(CInputMap::BTN_STICK_R))
+    {
+        if (player.GetCurrentSong().file_path.empty())
+            ctx.ShowToast("没有正在播放的曲目");
+        else
+            ctx.next_screen = SCREEN_DOWNLOAD;
+    }
 
     // 方向键：经典的走带控制。
     // 按住 B 时方向键左右是调歌词偏移，那种情况下要让开（见下面的 B 组合键分支）。
@@ -157,6 +182,13 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
             ctx.ShowToast("已停止");
         }
     }
+
+    // 左摇杆左右：逐秒快退/快进。ZL/ZR 是 5 秒一档，这里给一个更精细的档位，
+    // 对歌词对轴之类的场合有用
+    if (input.IsRepeat(CInputMap::BTN_STICK_RIGHT))
+        player.SeekRelative(kFineSeekStep);
+    if (input.IsRepeat(CInputMap::BTN_STICK_LEFT))
+        player.SeekRelative(-kFineSeekStep);
 
     // 音量挪到左摇杆上下：方向键已经让给走带控制了
     if (input.IsRepeat(CInputMap::BTN_STICK_UP))
@@ -189,29 +221,20 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         m_seeking = false;
     }
 
-    // B 键在播放界面用于调整歌词偏移（配合方向键左右），
-    // 以及打开在线下载界面（B + Y）
+    // 按住 B + 方向键左右：调整歌词偏移。
+    // 这里必须用只认方向键的 BTN_DPAD_*，因为摇杆左右已经分给逐秒快进退了
     if (input.IsHeld(CInputMap::BTN_B))
     {
-        if (input.IsRepeat(CInputMap::BTN_RIGHT))
+        if (input.IsRepeat(CInputMap::BTN_DPAD_RIGHT))
         {
             player.AdjustLyricOffset(500);
             ctx.ShowToast("歌词延后 0.5 秒");
         }
-        if (input.IsRepeat(CInputMap::BTN_LEFT))
+        if (input.IsRepeat(CInputMap::BTN_DPAD_LEFT))
         {
             player.AdjustLyricOffset(-500);
             ctx.ShowToast("歌词提前 0.5 秒");
         }
-        if (input.IsDown(CInputMap::BTN_Y))
-        {
-            if (player.GetCurrentSong().file_path.empty())
-                ctx.ShowToast("没有正在播放的曲目");
-            else
-                ctx.next_screen = SCREEN_DOWNLOAD;
-        }
-        if (input.IsDown(CInputMap::BTN_PLUS))
-            ctx.next_screen = SCREEN_SETTINGS;
     }
 
     // 歌词滚动的平滑过渡
@@ -281,7 +304,12 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
     }
     else if (kCoverRect.Contains(touch.x, touch.y))
     {
-        m_view = static_cast<ViewMode>((m_view + 1) % VIEW_COUNT);
+        // 有封面就放大欣赏；没有封面时保留原来的"切换视图"行为，
+        // 否则点在占位图上什么都不发生
+        if (m_cover != nullptr)
+            m_cover_fullscreen = true;
+        else
+            m_view = static_cast<ViewMode>((m_view + 1) % VIEW_COUNT);
     }
 }
 
@@ -343,17 +371,13 @@ void CPlayerScreen::DrawSongInfo(ScreenContext& ctx)
                            Theme::kTextDisabled);
     }
 
-    // 曲目计数：第几首 / 共几首
+    // 曲目计数。只留右对齐这一处：左边那句"第 N 首 / 共 M 首"和它是同一个信息，
+    // 并排放着纯属冗余。
     int total = player.GetPlaylistSize();
     if (total > 0)
     {
-        char buff[64];
-        std::snprintf(buff, sizeof(buff), "第 %d 首 / 共 %d 首",
-                      player.GetCurrentIndex() + 1, total);
-        r.DrawText(buff, kLeftX, kCounterY, CRenderer::FS_SMALL, Theme::kTextDim);
-
         char fraction[32];
-        std::snprintf(fraction, sizeof(fraction), "%d/%d", player.GetCurrentIndex() + 1, total);
+        std::snprintf(fraction, sizeof(fraction), "%d / %d", player.GetCurrentIndex() + 1, total);
         r.DrawText(fraction, kLeftX + kLeftWidth, kCounterY, CRenderer::FS_SMALL,
                    Theme::kAccent, CRenderer::ALIGN_RIGHT);
     }
@@ -512,14 +536,16 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
     {
         r.DrawText("暂无歌词", x + width / 2, y + height / 2 - 20, CRenderer::FS_LARGE,
                    Theme::kTextDisabled, CRenderer::ALIGN_CENTER);
-        r.DrawText("把同名 .lrc 文件放在歌曲旁边即可", x + width / 2, y + height / 2 + 20,
+        r.DrawText("把同名 .lrc 文件放在歌曲旁边，或按下右摇杆在线下载",
+                   x + width / 2, y + height / 2 + 20,
                    CRenderer::FS_SMALL, Theme::kTextDisabled, CRenderer::ALIGN_CENTER);
         return;
     }
 
     const std::vector<CLrcParser::Lyric>& lines = lyrics.GetLyrics();
-    int position = player.GetPosition();
-    int current = lyrics.GetLyricIndex(position);
+    const int position = player.GetPosition();
+    const int current = lyrics.GetLyricIndex(position);
+    const bool show_translation = player.GetConfig().GetShowTranslation();
 
     // 双栏只在真的有译文时才启用，否则右边是一片空白，反而更难看
     bool has_translation = false;
@@ -531,57 +557,137 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
             break;
         }
     }
-    const bool two_column = player.GetConfig().GetLyricTwoColumn()
-                            && player.GetConfig().GetShowTranslation()
+    const bool two_column = player.GetConfig().GetLyricTwoColumn() && show_translation
                             && has_translation;
 
     const int column_gap = 24;
-    const int column_width = (width - column_gap) / 2;
-    const int left_center = x + column_width / 2;
+    const int column_width = two_column ? (width - column_gap) / 2 : width;
+    const int left_center = two_column ? x + column_width / 2 : x + width / 2;
     const int right_center = x + column_width + column_gap + column_width / 2;
 
-    // 双栏时译文不再占用下方的一行，行距可以收紧一些
-    const int line_height = two_column ? 46 : 52;
-    const int center_y = y + height / 2 - line_height / 2;
-    const int visible = height / line_height / 2 + 1;
+    // 一条歌词折行后可能占好几行，所以行高不能是固定值：
+    // 先把每条的折行结果和高度算出来，再按高度依次堆叠。
+    struct Entry
+    {
+        int index;
+        std::vector<std::string> original;
+        std::vector<std::string> translation;
+        int text_line_height;
+        int height;
+    };
+
+    const int kEntryGap = 14;
+    const int kMaxAround = 6;               // 当前行上下各准备这么多条，够铺满一屏
+
+    auto build_entry = [&](int index) {
+        Entry entry;
+        entry.index = index;
+        const CLrcParser::Lyric& line = lines[index];
+        const bool is_current = (index == current);
+        CRenderer::FontSize font = is_current ? CRenderer::FS_LYRIC_CURRENT : CRenderer::FS_LYRIC;
+
+        entry.text_line_height = r.GetLineHeight(font) + 4;
+        entry.original = r.WrapText(line.text, font, column_width);
+
+        int lines_count = static_cast<int>(entry.original.size());
+        if (!line.translate.empty() && show_translation)
+        {
+            CRenderer::FontSize tfont = two_column ? font : CRenderer::FS_SMALL;
+            entry.translation = r.WrapText(line.translate, tfont, column_width);
+            if (two_column)
+            {
+                // 左右并排，条目高度取两栏中较高的那个
+                lines_count = std::max(lines_count, static_cast<int>(entry.translation.size()));
+            }
+            else
+            {
+                // 单栏时译文排在原文下方，高度要累加，否则会压到下一条上
+                entry.height = lines_count * entry.text_line_height
+                             + static_cast<int>(entry.translation.size())
+                               * (r.GetLineHeight(CRenderer::FS_SMALL) + 2);
+                return entry;
+            }
+        }
+        entry.height = lines_count * entry.text_line_height;
+        return entry;
+    };
+
+    std::vector<Entry> entries;
+    const int first = std::max(0, current - kMaxAround);
+    const int last = std::min(static_cast<int>(lines.size()) - 1, current + kMaxAround);
+    for (int i = first; i <= last; ++i)
+        entries.push_back(build_entry(i));
+
+    // 当前行居中；切行时用 m_lyric_scroll 做一点位移动画
+    int current_pos = current - first;
+    if (current_pos < 0 || current_pos >= static_cast<int>(entries.size()))
+        current_pos = 0;
+
+    const double animation_offset = m_lyric_scroll * (entries[current_pos].height + kEntryGap);
+    int current_top = y + height / 2 - entries[current_pos].height / 2
+                    + static_cast<int>(animation_offset);
+
+    // 由当前条目向上下推算出每条的顶端 y
+    std::vector<int> tops(entries.size(), 0);
+    tops[current_pos] = current_top;
+    for (int i = current_pos - 1; i >= 0; --i)
+        tops[i] = tops[i + 1] - entries[i].height - kEntryGap;
+    for (size_t i = current_pos + 1; i < entries.size(); ++i)
+        tops[i] = tops[i - 1] + entries[i - 1].height + kEntryGap;
 
     r.PushClip(x, y, width, height);
 
-    // 当前行居中，上下各画若干行；切行时用 m_lyric_scroll 做一点位移动画
-    double animation_offset = m_lyric_scroll * line_height;
-    for (int offset = -visible; offset <= visible; ++offset)
+    for (size_t i = 0; i < entries.size(); ++i)
     {
-        int index = current + offset;
-        if (index < 0 || index >= static_cast<int>(lines.size()))
-            continue;
+        const Entry& entry = entries[i];
+        int top = tops[i];
+        if (top + entry.height < y || top > y + height)
+            continue;                       // 完全在可视区外，不必绘制
 
-        const CLrcParser::Lyric& line = lines[index];
-        int draw_y = center_y + offset * line_height + static_cast<int>(animation_offset);
-        bool is_current = (offset == 0);
+        const CLrcParser::Lyric& line = lines[entry.index];
+        const bool is_current = (entry.index == current);
+        CRenderer::FontSize font = is_current ? CRenderer::FS_LYRIC_CURRENT : CRenderer::FS_LYRIC;
+        Color color = is_current ? Theme::kLyricCurrent : Theme::kLyricOther;
+
+        // 逐字高亮只在原文没被折行时做：折行之后按字节比例算高亮位置
+        // 会跨行错位，与其画错不如退回整行高亮。
+        if (is_current && !line.split.empty() && entry.original.size() == 1)
+        {
+            DrawLyricText(ctx, line, left_center, top, column_width, true, position);
+        }
+        else
+        {
+            for (size_t k = 0; k < entry.original.size(); ++k)
+            {
+                r.DrawText(entry.original[k], left_center,
+                           top + static_cast<int>(k) * entry.text_line_height, font, color,
+                           CRenderer::ALIGN_CENTER);
+            }
+        }
+
+        if (entry.translation.empty())
+            continue;
 
         if (two_column)
         {
-            // 双栏：左原文右译文，同一行左右对齐，滚动天然同步——
-            // 两栏用的是同一个 index 和同一个 draw_y
-            DrawLyricText(ctx, line, left_center, draw_y, column_width, is_current, position);
-            if (!line.translate.empty())
+            Color tcolor = is_current ? Theme::kLyricTranslate : Theme::kLyricOther;
+            for (size_t k = 0; k < entry.translation.size(); ++k)
             {
-                r.DrawTextEllipsis(line.translate, right_center, draw_y, column_width,
-                                   is_current ? CRenderer::FS_LYRIC_CURRENT : CRenderer::FS_LYRIC,
-                                   is_current ? Theme::kLyricTranslate : Theme::kLyricOther,
-                                   CRenderer::ALIGN_CENTER);
+                r.DrawText(entry.translation[k], right_center,
+                           top + static_cast<int>(k) * entry.text_line_height, font, tcolor,
+                           CRenderer::ALIGN_CENTER);
             }
         }
         else
         {
-            DrawLyricText(ctx, line, x + width / 2, draw_y, width, is_current, position);
-            // 翻译画在本行下方
-            if (!line.translate.empty() && player.GetConfig().GetShowTranslation())
+            const int sub_h = r.GetLineHeight(CRenderer::FS_SMALL) + 2;
+            int ty = top + static_cast<int>(entry.original.size()) * entry.text_line_height;
+            Color tcolor = is_current ? Theme::kLyricTranslate : Theme::kLyricOther;
+            for (size_t k = 0; k < entry.translation.size(); ++k)
             {
-                r.DrawTextEllipsis(line.translate, x + width / 2, draw_y + 40, width,
-                                   CRenderer::FS_SMALL,
-                                   is_current ? Theme::kLyricTranslate : Theme::kLyricOther,
-                                   CRenderer::ALIGN_CENTER);
+                r.DrawText(entry.translation[k], left_center,
+                           ty + static_cast<int>(k) * sub_h, CRenderer::FS_SMALL, tcolor,
+                           CRenderer::ALIGN_CENTER);
             }
         }
     }
@@ -651,8 +757,33 @@ void CPlayerScreen::DrawVolumeOverlay(ScreenContext& ctx)
     r.FillRoundRect(bar_x, bar_y, bar_w * volume / 100, 8, 4, Theme::kAccent.WithAlpha(alpha));
 }
 
+void CPlayerScreen::DrawCoverFullscreen(ScreenContext& ctx)
+{
+    CRenderer& r = *ctx.renderer;
+
+    r.FillRect(0, 0, Theme::kScreenWidth, Theme::kScreenHeight, Color{ 0, 0, 0, 235 });
+
+    // 按短边铺满并保持正方形：封面基本都是 1:1，直接用高度撑满最省事
+    const int size = Theme::kScreenHeight - Theme::kPadding * 2;
+    const int cx = (Theme::kScreenWidth - size) / 2;
+    const int cy = (Theme::kScreenHeight - size) / 2;
+    r.DrawTexture(m_cover, cx, cy, size, size);
+    r.DrawRect(cx, cy, size, size, Theme::kSeparator);
+
+    const SongInfo& song = ctx.player->GetCurrentSong();
+    r.DrawTextEllipsis(song.GetDisplayName(), Theme::kScreenWidth / 2,
+                       Theme::kScreenHeight - 34, Theme::kScreenWidth - 200,
+                       CRenderer::FS_SMALL, Theme::kTextDim, CRenderer::ALIGN_CENTER);
+}
+
 void CPlayerScreen::Draw(ScreenContext& ctx)
 {
+    if (m_cover_fullscreen && m_cover != nullptr)
+    {
+        DrawCoverFullscreen(ctx);
+        return;
+    }
+
     const int content_top = Theme::kHeaderHeight;
     const int content_height = Theme::kScreenHeight - Theme::kHeaderHeight - Theme::kFooterHeight;
 

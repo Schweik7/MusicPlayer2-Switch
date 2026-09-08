@@ -43,6 +43,9 @@ public:
         std::string title;
         std::string artist;
         std::string album;
+        // 本地文件时长（毫秒），0 表示未知。
+        // 用来在同名的不同版本（Live / 伴奏 / 加长版）之间挑对的那个。
+        int duration_ms{};
         bool download_lyric{ true };
         bool download_cover{ true };
         bool with_translation{ true };

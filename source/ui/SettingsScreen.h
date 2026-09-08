@@ -27,6 +27,7 @@ private:
         ITEM_DIM,
         ITEM_TRANSLATION,
         ITEM_LYRIC_LAYOUT,
+        ITEM_BROWSE,
         ITEM_MUSIC_DIR,
         ITEM_NETWORK,
         ITEM_UPDATE,

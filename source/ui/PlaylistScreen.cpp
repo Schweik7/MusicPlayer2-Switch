@@ -69,7 +69,7 @@ void CPlaylistScreen::Update(ScreenContext& ctx, double delta_seconds)
     }
     if (input.IsDown(CInputMap::BTN_PLUS))
     {
-        ctx.next_screen = SCREEN_BROWSER;
+        ctx.next_screen = SCREEN_SETTINGS;
         return;
     }
 

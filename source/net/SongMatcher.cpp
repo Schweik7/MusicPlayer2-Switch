@@ -79,11 +79,27 @@ double StringSimilarDegree(const std::string& src_utf8, const std::string& match
     return 1.0 - distance / static_cast<double>(std::max(n, m));
 }
 
+double DurationSimilarDegree(int duration_a_ms, int duration_b_ms)
+{
+    if (duration_a_ms <= 0 || duration_b_ms <= 0)
+        return 0.0;                             // 有一边不知道时长，这项不参与打分
+
+    const int diff = std::abs(duration_a_ms - duration_b_ms);
+    const int kExactMs = 2000;                  // 2 秒以内算完全一致
+    const int kMaxMs = 15000;                   // 差 15 秒以上算完全不符
+    if (diff <= kExactMs)
+        return 1.0;
+    if (diff >= kMaxMs)
+        return 0.0;
+    return 1.0 - static_cast<double>(diff - kExactMs) / (kMaxMs - kExactMs);
+}
+
 int SelectMatchedItem(const std::vector<DownloadItem>& list,
                       const std::string& title,
                       const std::string& artist,
                       const std::string& album,
-                      const std::string& file_name)
+                      const std::string& file_name,
+                      int local_duration_ms)
 {
     /*
     权值分配沿用桌面版：
@@ -93,35 +109,53 @@ int SelectMatchedItem(const std::vector<DownloadItem>& list,
         文件名——标题     0.3
         文件名——艺术家   0.3
         列表中的排序      0.05
+    另外加入桌面版没有的一项：
+        时长接近程度      0.5
+    时长权重给得比单项文字都高，是因为它几乎不会误导——同名不同版本
+    （Live、伴奏、加长版）光看文字分不出来，时长却一目了然。
+    本地时长未知时这项恒为 0，退化成原来的行为。
     */
     if (list.empty())
         return -1;
 
-    double max_weight = -1.0;
-    int max_index = 0;
+    const bool use_duration = (local_duration_ms > 0);
+    const double kDurationWeight = 0.5;
+    const double kTextThreshold = 0.3;
+
+    // 时长分不能直接加进总分再统一比阈值：那样"文字毫不相干、时长碰巧一致"
+    // 的项光靠 0.5 的时长分就能过线。正确的做法是先用文字分筛掉不像的，
+    // 再让时长在剩下的候选里分高下。
+    double best_total = -1.0;
+    int best_index = -1;
 
     for (size_t i = 0; i < list.size(); ++i)
     {
         const DownloadItem& item = list[i];
-        double weight = 0.0;
-        weight += StringSimilarDegree(title, item.title) * 0.4;
-        weight += StringSimilarDegree(artist, item.artist) * 0.4;
-        weight += StringSimilarDegree(album, item.album) * 0.3;
-        weight += StringSimilarDegree(file_name, item.title) * 0.3;
-        weight += StringSimilarDegree(file_name, item.artist) * 0.3;
+        double text_weight = 0.0;
+        text_weight += StringSimilarDegree(title, item.title) * 0.4;
+        text_weight += StringSimilarDegree(artist, item.artist) * 0.4;
+        text_weight += StringSimilarDegree(album, item.album) * 0.3;
+        text_weight += StringSimilarDegree(file_name, item.title) * 0.3;
+        text_weight += StringSimilarDegree(file_name, item.artist) * 0.3;
 
         // 搜索结果越靠前关联度一般越高：首项取 1，之后每项减 0.02
-        weight += (1.0 - i * 0.02) * 0.05;
+        text_weight += (1.0 - i * 0.02) * 0.05;
 
-        if (weight > max_weight)
+        if (text_weight < kTextThreshold)
+            continue;                       // 文字都不像，时长再准也不要
+
+        double total = text_weight;
+        if (use_duration)
+            total += DurationSimilarDegree(local_duration_ms, item.duration) * kDurationWeight;
+
+        if (total > best_total)
         {
-            max_weight = weight;
-            max_index = static_cast<int>(i);
+            best_total = total;
+            best_index = static_cast<int>(i);
         }
     }
 
-    // 最高分都不到 0.3 就认为没有匹配项
-    return max_weight < 0.3 ? -1 : max_index;
+    return best_index;
 }
 
 }   // namespace SongMatcher

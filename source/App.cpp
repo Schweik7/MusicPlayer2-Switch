@@ -73,7 +73,9 @@ void CApp::RestoreLastSession()
         }
     }
 
-    // 没有上次的播放列表：扫一遍默认音乐目录
+    // 没有上次的播放列表：扫默认音乐目录。
+    // 扫描要逐个文件读标签，几百首要十秒左右，绝不能挡在启动路径上，
+    // 所以丢给后台线程，界面先起来，扫完再把结果接进去。
     std::string music_dir = config.GetMusicDir();
     Diag::Logf("默认音乐目录: %s (是目录=%s)", music_dir.c_str(),
                FileUtil::IsDirectory(music_dir) ? "是" : "否");
@@ -81,28 +83,35 @@ void CApp::RestoreLastSession()
         return;
     Diag::ProbeDirectory(music_dir);
 
+    m_scan_start_ticks = SDL_GetTicks();
+    m_scanner.Start(music_dir, 3);          // 限制 3 层，避免在很深的目录树里空转
+}
+
+void CApp::HandleScanResult()
+{
     std::vector<SongInfo> songs;
-    uint32_t scan_start = SDL_GetTicks();
-    CMediaScanner::ScanDirectory(music_dir, songs, 3);      // 限制 3 层，避免开机卡太久
-    // 逐个文件读标签会明显拖慢扫描，把耗时记下来才知道值不值
-    Diag::Logf("扫描到 %u 首可播放曲目，耗时 %u 毫秒",
-               static_cast<unsigned>(songs.size()), SDL_GetTicks() - scan_start);
-    int tagged = 0;
-    for (const SongInfo& song : songs)
+    if (!m_scanner.TakeResult(songs))
+        return;
+
+    Diag::Logf("后台扫描完成：%u 首，耗时 %u 毫秒",
+               static_cast<unsigned>(songs.size()), SDL_GetTicks() - m_scan_start_ticks);
+
+    if (songs.empty())
+        return;
+    // 扫描期间用户可能已经自己选了目录或播放列表，那就别覆盖他的选择
+    if (!m_player.IsPlaylistEmpty())
     {
-        if (!song.IsTagEmpty())
-            ++tagged;
+        Diag::Logf("播放列表已有内容，丢弃后台扫描结果");
+        return;
     }
-    Diag::Logf("其中 %d 首读到了标签", tagged);
-    for (size_t i = 0; i < songs.size() && i < 8; ++i)
-    {
-        Diag::Logf("  示例 %u: 文件=%s", static_cast<unsigned>(i + 1),
-                   FileUtil::GetFileName(songs[i].file_path).c_str());
-        Diag::Logf("           标题=%s  艺术家=%s", songs[i].title.c_str(),
-                   songs[i].artist.c_str());
-    }
-    if (!songs.empty())
-        m_player.SetPlaylist(std::move(songs), 0, false);
+
+    int count = static_cast<int>(songs.size());
+    m_player.SetPlaylist(std::move(songs), 0, false);
+    m_player.SelectIndex(m_player.GetConfig().GetLastIndex());
+
+    char message[64];
+    std::snprintf(message, sizeof(message), "音乐库扫描完成，共 %d 首", count);
+    m_ctx.ShowToast(message);
 }
 
 void CApp::HandleDownloadResult()
@@ -157,8 +166,18 @@ void CApp::DrawHeader()
         m_renderer.DrawText("设置", m_settings_button.x + 10, m_settings_button.y + 4,
                             CRenderer::FS_SMALL, Theme::kText);
     }
-    m_renderer.DrawText(m_screens[m_current]->GetTitle(), Theme::kScreenWidth / 2, 22,
-                        CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
+    // 后台扫描时把状态顶到中间：否则用户会以为"打开就是空列表"
+    CLibraryScanner::Progress scan = m_scanner.Poll();
+    if (scan.running)
+    {
+        m_renderer.DrawText("正在扫描音乐库…", Theme::kScreenWidth / 2, 22,
+                            CRenderer::FS_NORMAL, Theme::kHighlight, CRenderer::ALIGN_CENTER);
+    }
+    else
+    {
+        m_renderer.DrawText(m_screens[m_current]->GetTitle(), Theme::kScreenWidth / 2, 22,
+                            CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
+    }
 
     // 右上角分两行：上面是日期时间，下面是播放模式和音量
     const int right_x = Theme::kScreenWidth - Theme::kPadding;
@@ -210,6 +229,14 @@ void CApp::DrawHeader()
                         CRenderer::FS_SMALL, touch_on ? Theme::kText : Theme::kTextDim);
 }
 
+void CApp::ToggleTouchEnabled()
+{
+    bool enabled = !m_input.IsTouchEnabled();
+    m_input.SetTouchEnabled(enabled);
+    m_player.GetConfig().SetTouchEnabled(enabled);
+    m_ctx.ShowToast(enabled ? "已启用触摸操作" : "已禁用触摸操作");
+}
+
 void CApp::HandleHeaderTouch()
 {
     // 触摸开关按钮必须用原始触摸状态：走 GetTouch() 的话，
@@ -221,10 +248,7 @@ void CApp::HandleHeaderTouch()
 
     if (m_touch_button.Contains(raw.x, raw.y))
     {
-        bool enabled = !m_input.IsTouchEnabled();
-        m_input.SetTouchEnabled(enabled);
-        m_player.GetConfig().SetTouchEnabled(enabled);
-        m_ctx.ShowToast(enabled ? "已启用触摸操作" : "已禁用触摸操作");
+        ToggleTouchEnabled();
         return;
     }
 
@@ -321,6 +345,7 @@ void CApp::Run()
         m_dimmer.Update(delta_seconds, m_input.HasAnyInput(), m_player.IsPlaying());
 
         m_player.Update();
+        HandleScanResult();
         m_player.GetAudio().GetSpectrum().Update(delta_seconds);
         HandleDownloadResult();
 
@@ -329,6 +354,10 @@ void CApp::Run()
         // 放在界面 Update 之后：顶栏按钮的优先级更高，而且要避免
         // 上面那句 next_screen = SCREEN_NONE 把顶栏设的跳转清掉
         HandleHeaderTouch();
+        // 按下左摇杆开关触摸，任何界面下都有效。
+        // 误触多发生在手持时，这个键刚好在拇指边上
+        if (m_input.IsDown(CInputMap::BTN_STICK_L))
+            ToggleTouchEnabled();
         if (m_ctx.request_exit)
             m_running = false;
 
@@ -357,6 +386,8 @@ void CApp::Uninit()
             screen->ReleaseResources(m_ctx);
     }
 
+    // 后台线程都要在各自用到的资源被拆掉之前收掉
+    m_scanner.WaitForCompletion();
     // 更新线程可能正在用 curl，必须在 CPlayer 拆掉网络栈之前收掉
     m_updater.WaitForCompletion();
     // 亮度是全局设置，退出前一定要还原

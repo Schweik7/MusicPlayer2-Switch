@@ -27,10 +27,17 @@ namespace SongMatcher
     // 任一侧为空、或长度超过 256 个字符时返回 0（与桌面版一致，避免大串上的 O(n*m) 开销）。
     double StringSimilarDegree(const std::string& src_utf8, const std::string& match_utf8);
 
-    // 返回最匹配项的下标；没有达到阈值时返回 -1
+    // 时长接近程度，返回 0.0~1.0。
+    // 任一侧未知（为 0）时返回 0，调用方据此不计这一项的权重。
+    // 差 2 秒以内视为完全一致，差 15 秒以上视为完全不符，中间线性过渡。
+    double DurationSimilarDegree(int duration_a_ms, int duration_b_ms);
+
+    // 返回最匹配项的下标；没有达到阈值时返回 -1。
+    // local_duration_ms 是本地文件的时长，为 0 表示未知（不参与打分）。
     int SelectMatchedItem(const std::vector<DownloadItem>& list,
                           const std::string& title,
                           const std::string& artist,
                           const std::string& album,
-                          const std::string& file_name);
+                          const std::string& file_name,
+                          int local_duration_ms = 0);
 }

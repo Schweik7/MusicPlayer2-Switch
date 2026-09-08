@@ -238,6 +238,40 @@ static FILE* OpenFile(const std::string& path, const char* mode)
 #endif
 }
 
+bool CopyFileTo(const std::string& src, const std::string& dst)
+{
+    FILE* in = OpenFile(src, "rb");
+    if (in == nullptr)
+        return false;
+    FILE* out = OpenFile(dst, "wb");
+    if (out == nullptr)
+    {
+        std::fclose(in);
+        return false;
+    }
+
+    char buffer[64 * 1024];
+    bool ok = true;
+    size_t read_bytes;
+    while ((read_bytes = std::fread(buffer, 1, sizeof(buffer), in)) > 0)
+    {
+        if (std::fwrite(buffer, 1, read_bytes, out) != read_bytes)
+        {
+            ok = false;
+            break;
+        }
+    }
+    if (std::ferror(in) != 0)
+        ok = false;
+
+    std::fclose(in);
+    std::fclose(out);
+    CommitDevice(dst);
+    if (!ok)
+        std::remove(dst.c_str());       // 别留下半截文件
+    return ok;
+}
+
 bool ReadHead(const std::string& path, size_t max_bytes, std::string& content)
 {
     content.clear();

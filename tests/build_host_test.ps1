@@ -39,6 +39,7 @@ $sources = @(
     (Join-Path $coreDir 'PlaylistFile.cpp')
     (Join-Path $coreDir 'LrcParser.cpp')
     (Join-Path $coreDir 'MediaScanner.cpp')
+(Join-Path $coreDir 'LibraryScanner.cpp')
 (Join-Path $coreDir 'AudioTag.cpp')
     (Join-Path $coreDir 'Config.cpp')
 (Join-Path $coreDir 'VersionUtil.cpp')
