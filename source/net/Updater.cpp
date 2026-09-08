@@ -48,6 +48,11 @@ CUpdater::~CUpdater()
 void CUpdater::Init(CCurlHttpClient* http, const std::string& self_path)
 {
     m_http = http;
+    SetSelfPath(self_path);
+}
+
+void CUpdater::SetSelfPath(const std::string& self_path)
+{
     if (!self_path.empty())
         m_self_path = self_path;
 }
@@ -345,6 +350,9 @@ void CUpdater::DoInstall()
 
 std::string CUpdater::ApplyPendingUpdate()
 {
+    // 调用时机很关键：必须在 romfsInit() 之前。
+    // romfs 挂载的就是这个 NRO 文件本身，挂着的时候它删不掉也改不了名。
+    // 这一点是照着 GBAStation 的更新器看出来的——它在替换前先 romfsExit()。
     const std::string temp_path = m_self_path + ".new";
     if (!FileUtil::Exists(temp_path))
         return std::string();
@@ -363,15 +371,15 @@ std::string CUpdater::ApplyPendingUpdate()
     const bool had_old = FileUtil::Exists(m_self_path);
     if (had_old && !FileUtil::MoveOverwrite(m_self_path, backup_path))
     {
-        return "更新已就绪，但换不动正在使用的文件。退出后把 " + temp_path
-             + " 改名为 " + m_self_path + " 即可";
+        return "更新已就绪，但换不动正在使用的文件（errno=" + std::to_string(errno)
+             + "）。退出后把 " + temp_path + " 改名为 " + m_self_path + " 即可";
     }
 
     if (!FileUtil::MoveOverwrite(temp_path, m_self_path))
     {
         RestoreBackup(had_old, backup_path);
-        return "更新已就绪，但写不进去。退出后把 " + temp_path + " 改名为 "
-             + m_self_path + " 即可";
+        return "更新已就绪，但写不进去（errno=" + std::to_string(errno)
+             + "）。退出后把 " + temp_path + " 改名为 " + m_self_path + " 即可";
     }
 
     // 换上去之后核对大小。改名或复制都可能"成功返回"却只写了一半，

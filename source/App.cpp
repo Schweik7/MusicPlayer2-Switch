@@ -38,7 +38,16 @@ bool CApp::Init()
     m_boot_start_ticks = SDL_GetTicks();
     m_boot_last_ticks = m_boot_start_ticks;
 
-    // romfs 用来放图标等资源；没有 romfs 也能跑，所以失败不算致命
+    // 应用待装的更新——必须赶在 romfsInit() 之前。
+    //
+    // romfs 是从正在运行的这个 NRO 文件里挂载的，挂着的时候整个文件被 FS 层持有：
+    // 删不掉、改不了名、也打不开写。之前"更新已就绪但写不进去"就是这么来的，
+    // 当时这段代码排在 romfsInit() 后面。
+    // 顺序换过来，此刻文件还没被任何东西按住，一个 rename 就换完了。
+    m_updater.SetSelfPath(m_self_path);
+    m_pending_update_note = m_updater.ApplyPendingUpdate();
+
+    // romfs 用来放 CA 证书等资源；没有 romfs 也能跑，所以失败不算致命
     romfsInit();
     SystemClock::Init();
     BootStage("romfs");
@@ -84,10 +93,6 @@ bool CApp::Init()
 
     m_updater.Init(&m_player.GetHttpClient(), m_self_path);
     m_settings_screen.SetUpdater(&m_updater);
-
-    // 上次下载好的新版本在这一刻换上去：现在这份镜像已经读进内存了，
-    // 覆盖磁盘上的文件不影响当前进程。运行中途换是换不动的。
-    m_pending_update_note = m_updater.ApplyPendingUpdate();
     m_settings_screen.SetApp(this);
 
     m_ctx.player = &m_player;

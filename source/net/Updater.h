@@ -59,6 +59,8 @@ public:
     // self_path 是本程序 NRO 在 SD 卡上的位置，来自 main 的 argv[0]；
     // 取不到时退回默认路径。
     void Init(CCurlHttpClient* http, const std::string& self_path);
+    // 只设置自身路径。ApplyPendingUpdate 要在网络栈起来之前就跑，那时还没有 http 客户端。
+    void SetSelfPath(const std::string& self_path);
 
     bool IsBusy() const { return m_busy.load(); }
     // source 决定这次去哪里查，安装时沿用同一个选择
