@@ -1,6 +1,7 @@
 #include "PlayerScreen.h"
 #include "Renderer.h"
 #include "../Player.h"
+#include "../core/Config.h"
 #include "../core/FileUtil.h"
 #include "../input/InputMap.h"
 
@@ -55,8 +56,13 @@ namespace
     const int kToolSize = 40;
     const int kToolGap = 8;
     const int kToolStep = kToolSize + kToolGap;
-    const Rect kBtnLayout{ kNormalRightX + kNormalRightWidth - kToolSize, kContentTop,
+    //
+    // 四个按钮排成一横排（1×4）而不是 4×1 或 2×2：歌词是垂直居中的，
+    // 顶上一条细横带侵占最少；竖排贴着右边缘会和双栏歌词的右列打架，
+    // 2×2 则是个更高的方块，往歌词里伸得更多。
+    const Rect kBtnRepeat{ kNormalRightX + kNormalRightWidth - kToolSize, kContentTop,
                            kToolSize, kToolSize };
+    const Rect kBtnLayout{ kBtnRepeat.x - kToolStep, kContentTop, kToolSize, kToolSize };
     const Rect kBtnSync{ kBtnLayout.x - kToolStep, kContentTop, kToolSize, kToolSize };
     const Rect kBtnDownload{ kBtnSync.x - kToolStep, kContentTop, kToolSize, kToolSize };
 
@@ -517,6 +523,7 @@ bool CPlayerScreen::HandleLyricDrag(ScreenContext& ctx, double delta_seconds)
     if (touch.pressed && m_lyric_rect.Contains(touch.x, touch.y)
         && !kBtnSync.Contains(touch.x, touch.y) && !kBtnDownload.Contains(touch.x, touch.y)
         && !kBtnLayout.Contains(touch.x, touch.y)
+        && !kBtnRepeat.Contains(touch.x, touch.y)
         && !kBtnVolumeMinus.Contains(touch.x, touch.y)
         && !kBtnVolumePlus.Contains(touch.x, touch.y)
         && !kBtnSeekBack.Contains(touch.x, touch.y)
@@ -626,6 +633,7 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         else if (kBtnNext.Contains(touch.x, touch.y))     m_pressed_button = HIT_NEXT;
         else if (kBtnStop.Contains(touch.x, touch.y))     m_pressed_button = HIT_STOP;
         else if (kBtnDownload.Contains(touch.x, touch.y)) m_pressed_button = HIT_TOOL_DOWNLOAD;
+        else if (kBtnRepeat.Contains(touch.x, touch.y))   m_pressed_button = HIT_TOOL_REPEAT;
         else if (kBtnVolumeMinus.Contains(touch.x, touch.y))
             m_pressed_button = HIT_VOLUME_MINUS;
         else if (kBtnVolumePlus.Contains(touch.x, touch.y))
@@ -674,6 +682,11 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
             ctx.ShowToast("没有正在播放的曲目");
         else
             ctx.next_screen = SCREEN_DOWNLOAD;
+    }
+    else if (kBtnRepeat.Contains(touch.x, touch.y))
+    {
+        player.SwitchRepeatMode();
+        ctx.ShowToast(CPlayer::GetRepeatModeName(player.GetRepeatMode()));
     }
     else if (lyric_view && kBtnLayout.Contains(touch.x, touch.y))
     {
@@ -857,6 +870,46 @@ void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
     }
 }
 
+void CPlayerScreen::DrawRepeatIcon(ScreenContext& ctx, int cx, int cy, Color color)
+{
+    CRenderer& r = *ctx.renderer;
+
+    // 画一个带箭头的循环框。列表循环和单曲循环共用它，区别只在中间那个 1。
+    auto draw_loop = [&]() {
+        r.DrawRect(cx - 11, cy - 8, 22, 16, color);
+        r.FillTriangle(cx + 5, cy - 12, cx + 5, cy - 4, cx + 13, cy - 8, color);
+    };
+
+    switch (ctx.player->GetRepeatMode())
+    {
+    case CConfig::RM_PLAY_ORDER:
+        // 一条向右的箭头：从头播到尾
+        r.FillRect(cx - 11, cy - 2, 16, 4, color);
+        r.FillTriangle(cx + 4, cy - 8, cx + 4, cy + 8, cx + 13, cy, color);
+        break;
+    case CConfig::RM_PLAY_SHUFFLE:
+        // 两条交叉的线 + 箭头：随机
+        r.DrawLine(cx - 12, cy - 6, cx + 6, cy + 6, color);
+        r.DrawLine(cx - 12, cy + 6, cx + 6, cy - 6, color);
+        r.FillTriangle(cx + 4, cy - 10, cx + 4, cy - 2, cx + 12, cy - 6, color);
+        r.FillTriangle(cx + 4, cy + 2, cx + 4, cy + 10, cx + 12, cy + 6, color);
+        break;
+    case CConfig::RM_LOOP_TRACK:
+        draw_loop();
+        r.DrawText("1", cx, cy - 11, CRenderer::FS_SMALL, color, CRenderer::ALIGN_CENTER);
+        break;
+    case CConfig::RM_PLAY_TRACK:
+        // 箭头撞上一堵墙：放完这一首就停
+        r.FillRect(cx - 11, cy - 2, 12, 4, color);
+        r.FillTriangle(cx, cy - 8, cx, cy + 8, cx + 8, cy, color);
+        r.FillRect(cx + 9, cy - 8, 3, 16, color);
+        break;
+    default:                                    // RM_LOOP_PLAYLIST
+        draw_loop();
+        break;
+    }
+}
+
 void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
 {
     CRenderer& r = *ctx.renderer;
@@ -872,6 +925,7 @@ void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
         { kBtnDownload,    HIT_TOOL_DOWNLOAD, false,      true },
         { kBtnSync,        HIT_TOOL_SYNC,     sync,       lyric_view },
         { kBtnLayout,      HIT_TOOL_LAYOUT,   two_column, lyric_view },
+        { kBtnRepeat,      HIT_TOOL_REPEAT,   false,      true },
     };
 
     for (const ToolDef& tool : tools)
@@ -899,6 +953,10 @@ void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
             r.FillRect(cx - 2, cy - 12, 4, 11, icon);
             r.FillTriangle(cx - 7, cy - 2, cx + 7, cy - 2, cx, cy + 7, icon);
             r.FillRect(cx - 9, cy + 10, 18, 3, icon);
+        }
+        else if (tool.id == HIT_TOOL_REPEAT)
+        {
+            DrawRepeatIcon(ctx, cx, cy, icon);
         }
         else if (tool.id == HIT_TOOL_LAYOUT)
         {

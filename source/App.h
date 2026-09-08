@@ -76,7 +76,6 @@ private:
     // 顶栏放这些按钮的原则：凡是只能靠某个手柄键触发的功能，都要在这里有个入口，
     // 否则纯触摸操作的用户会被卡住（返回就是这么漏掉的）。
     Rect m_back_button;
-    Rect m_repeat_button;
     Rect m_touch_button;
     Rect m_settings_button;
     Rect m_playlist_button;

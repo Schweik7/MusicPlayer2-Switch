@@ -212,7 +212,6 @@ namespace
 void CApp::ClearHeaderButtons()
 {
     m_back_button = Rect{};
-    m_repeat_button = Rect{};
     m_touch_button = Rect{};
     m_settings_button = Rect{};
     m_playlist_button = Rect{};
@@ -276,31 +275,25 @@ void CApp::DrawHeader()
                             CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
     }
 
-    // 右上角分两行：上面是日期时间，下面是音量、播放模式、触摸开关
+    // 右上角一行：触摸开关 + 日期时间。
+    //
+    // 原来是两行（上面时间、下面几个按钮），播放模式按钮挪到歌词区的工具排之后
+    // 下面那行只剩一个开关，两行显得空。并成一行，顶栏也清爽。
     const int right_x = Theme::kScreenWidth - Theme::kPadding;
 
     SystemClock::DateTime now = SystemClock::Now();
     std::string clock_text = SystemClock::FormatDate(now) + "  " + SystemClock::FormatTime(now);
-    m_renderer.DrawText(clock_text, right_x, 8, CRenderer::FS_SMALL,
+    int clock_w = 0, clock_h = 0;
+    m_renderer.MeasureText(clock_text, CRenderer::FS_SMALL, clock_w, clock_h);
+    m_renderer.DrawText(clock_text, right_x, 26, CRenderer::FS_SMALL,
                         now.valid ? Theme::kText : Theme::kTextDisabled, CRenderer::ALIGN_RIGHT);
-
-    const int button_y = 34;
-    // 音量不放在这里：它挪到了播放界面歌词区左上角的操作区，
-    // 和歌词偏移并排，比顶栏上一个孤零零的百分数好认。
-    int cursor_x = right_x;                         // 从右往左排布的游标
-
-    const char* mode_text = CPlayer::GetRepeatModeName(m_player.GetRepeatMode());
-    int mode_w = 0, mode_h = 0;
-    m_renderer.MeasureText(mode_text, CRenderer::FS_SMALL, mode_w, mode_h);
-    m_repeat_button = DrawChip(m_renderer, mode_text, cursor_x - (mode_w + 20), button_y,
-                               Theme::kPanelAlt, Theme::kText);
-    cursor_x = m_repeat_button.x - 8;
 
     const bool touch_on = m_input.IsTouchEnabled();
     const std::string touch_text = touch_on ? "触摸 开" : "触摸 关";
     int touch_w = 0, touch_h = 0;
     m_renderer.MeasureText(touch_text, CRenderer::FS_SMALL, touch_w, touch_h);
-    m_touch_button = DrawChip(m_renderer, touch_text, cursor_x - (touch_w + 20), button_y,
+    m_touch_button = DrawChip(m_renderer, touch_text,
+                              right_x - clock_w - 16 - (touch_w + 20), 22,
                               touch_on ? Theme::kPanelAlt : Theme::kAccentDim,
                               touch_on ? Theme::kText : Theme::kTextDim);
 }
@@ -335,12 +328,9 @@ void CApp::HandleHeaderTouch()
     if (!m_input.IsTouchEnabled())
         return;
 
-    if (m_repeat_button.Contains(raw.x, raw.y))
-    {
-        m_player.SwitchRepeatMode();
-        m_ctx.ShowToast(CPlayer::GetRepeatModeName(m_player.GetRepeatMode()));
-    }
-    else if (m_settings_button.Contains(raw.x, raw.y))
+    // 播放模式的按钮挪到了播放界面歌词区的工具排里：
+    // 那里能同时把当前模式画出来，顶栏只剩一个文字标签反而占地方。
+    if (m_settings_button.Contains(raw.x, raw.y))
     {
         m_ctx.next_screen = SCREEN_SETTINGS;
     }

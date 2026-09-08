@@ -71,6 +71,7 @@ private:
         HIT_TOOL_DOWNLOAD,      // 歌词区右上角：下载歌词/封面
         HIT_TOOL_SYNC,          // 歌词区右上角：拖歌词是否带着进度走
         HIT_TOOL_LAYOUT,        // 歌词区右上角：单栏 / 双栏
+        HIT_TOOL_REPEAT,        // 歌词区右上角：播放模式
         HIT_VOLUME_MINUS,       // 左摇杆十字：下 = 音量减
         HIT_VOLUME_PLUS,        // 左摇杆十字：上 = 音量加
         HIT_SEEK_BACK,          // 左摇杆十字：左 = 后退 1 秒
@@ -87,8 +88,11 @@ private:
     void DrawTransportButtons(ScreenContext& ctx);
     // 右下角的 ABXY 触摸键。只在单栏歌词/频谱下画：双栏时右半边是译文，会挡住。
     void DrawFaceButtons(ScreenContext& ctx);
-    // 歌词区右上角的两个小按钮
+    // 歌词区右上角的一排小按钮
     void DrawLyricTools(ScreenContext& ctx);
+    // 播放模式的图标。五种模式要在 40 像素里分得清，所以用图形拼——
+    // 两个汉字在这个尺寸下挤成一团，一个汉字又分不出"单曲循环"和"单曲播放"。
+    void DrawRepeatIcon(ScreenContext& ctx, int cx, int cy, Color color);
     // 歌词区左上角的左摇杆十字：上下音量、左右逐秒进退，中心显示音量。
     // 和左下角的方向键十字、右下角的 ABXY 菱形并列，是第三个自带说明的操作区。
     void DrawStickCross(ScreenContext& ctx);
