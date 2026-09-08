@@ -203,23 +203,35 @@ namespace
     }
 }
 
+void CApp::ClearHeaderButtons()
+{
+    m_back_button = Rect{};
+    m_repeat_button = Rect{};
+    m_touch_button = Rect{};
+    m_settings_button = Rect{};
+    m_playlist_button = Rect{};
+}
+
 void CApp::DrawHeader()
 {
     m_renderer.FillRect(0, 0, Theme::kScreenWidth, Theme::kHeaderHeight, Theme::kPanel);
     m_renderer.DrawLine(0, Theme::kHeaderHeight - 1, Theme::kScreenWidth, Theme::kHeaderHeight - 1,
                         Theme::kSeparator);
 
-    // 返回按钮。位置固定预留：不显示的时候也占着这块地方，
-    // 否则在有无返回的界面之间切换时标题会左右跳。
-    const int kBackWidth = 76;
+    // 标题左边缘和左栏封面对齐（封面居中于 48..308 的左栏里）。
+    // 返回按钮收成一个窄箭头，正好塞在标题左边那块空当里。
+    const int title_x = 78;
+
     m_back_button = Rect{};
     if (m_screens[m_current]->CanGoBack())
     {
-        m_back_button = DrawChip(m_renderer, "← 返回", Theme::kPadding, 22, Theme::kPanelAlt,
-                                 Theme::kText);
+        m_back_button = Rect{ Theme::kPadding, 22, 42, 30 };
+        m_renderer.FillRoundRect(m_back_button.x, m_back_button.y, m_back_button.w,
+                                 m_back_button.h, 6, Theme::kPanelAlt);
+        m_renderer.DrawText("←", m_back_button.x + m_back_button.w / 2, m_back_button.y + 3,
+                            CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
     }
 
-    const int title_x = Theme::kPadding + kBackWidth + 12;
     int title_w = 0, title_h = 0;
     m_renderer.MeasureText("MusicPlayer2", CRenderer::FS_LARGE, title_w, title_h);
     m_renderer.DrawText("MusicPlayer2", title_x, 20, CRenderer::FS_LARGE, Theme::kAccent);
@@ -255,31 +267,9 @@ void CApp::DrawHeader()
                         now.valid ? Theme::kText : Theme::kTextDisabled, CRenderer::ALIGN_RIGHT);
 
     const int button_y = 34;
-
-    // 音量：数字两边各一个加减按钮。音量原本只能用左摇杆调，触摸够不着。
-    m_volume_up_button = Rect{ right_x - 34, button_y, 34, 28 };
-    m_renderer.FillRoundRect(m_volume_up_button.x, m_volume_up_button.y, m_volume_up_button.w,
-                             m_volume_up_button.h, 6, Theme::kPanelAlt);
-    m_renderer.DrawText("+", m_volume_up_button.x + m_volume_up_button.w / 2,
-                        m_volume_up_button.y + 2, CRenderer::FS_SMALL, Theme::kText,
-                        CRenderer::ALIGN_CENTER);
-
-    char volume_text[32];
-    std::snprintf(volume_text, sizeof(volume_text), "%d%%", m_player.GetVolume());
-    int volume_w = 0, volume_h = 0;
-    m_renderer.MeasureText(volume_text, CRenderer::FS_SMALL, volume_w, volume_h);
-    const int volume_text_x = m_volume_up_button.x - 8;
-    m_renderer.DrawText(volume_text, volume_text_x, 38, CRenderer::FS_SMALL, Theme::kTextDim,
-                        CRenderer::ALIGN_RIGHT);
-
-    m_volume_down_button = Rect{ volume_text_x - volume_w - 8 - 34, button_y, 34, 28 };
-    m_renderer.FillRoundRect(m_volume_down_button.x, m_volume_down_button.y,
-                             m_volume_down_button.w, m_volume_down_button.h, 6, Theme::kPanelAlt);
-    m_renderer.DrawText("−", m_volume_down_button.x + m_volume_down_button.w / 2,
-                        m_volume_down_button.y + 2, CRenderer::FS_SMALL, Theme::kText,
-                        CRenderer::ALIGN_CENTER);
-
-    int cursor_x = m_volume_down_button.x - 8;      // 从右往左排布的游标
+    // 音量不放在这里：它挪到了播放界面歌词区左上角的操作区，
+    // 和歌词偏移并排，比顶栏上一个孤零零的百分数好认。
+    int cursor_x = right_x;                         // 从右往左排布的游标
 
     const char* mode_text = CPlayer::GetRepeatModeName(m_player.GetRepeatMode());
     int mode_w = 0, mode_h = 0;
@@ -342,14 +332,6 @@ void CApp::HandleHeaderTouch()
         // 走界面自己的 GoBack，和按 B 是同一条路径，两者不会走偏
         m_screens[m_current]->GoBack(m_ctx);
     }
-    else if (m_volume_up_button.Contains(raw.x, raw.y))
-    {
-        m_player.AdjustVolume(5);
-    }
-    else if (m_volume_down_button.Contains(raw.x, raw.y))
-    {
-        m_player.AdjustVolume(-5);
-    }
 }
 
 void CApp::DrawDimOverlay()
@@ -386,13 +368,40 @@ void CApp::DrawFooter()
     if (parts.empty())
         return;
 
+    // 按每段自己的宽度排，把富余的横向空间平分成等宽的间隙。
+    //
+    // 原来是给每段分一个等宽的格子再居中：长的那段（"右摇杆↑↓ 翻歌词"）被省略号
+    // 截断，短的那两段（"− 列表" "＋ 设置"）左右却空一大片。
     const int usable = Theme::kScreenWidth - Theme::kPadding * 2;
-    const int slot = usable / static_cast<int>(parts.size());
+    std::vector<int> widths(parts.size(), 0);
+    int total_text = 0;
     for (size_t i = 0; i < parts.size(); ++i)
     {
-        const int center = Theme::kPadding + static_cast<int>(i) * slot + slot / 2;
-        m_renderer.DrawTextEllipsis(parts[i], center, y + 20, slot - 8, CRenderer::FS_SMALL,
-                                    Theme::kTextDim, CRenderer::ALIGN_CENTER);
+        int h = 0;
+        m_renderer.MeasureText(parts[i], CRenderer::FS_SMALL, widths[i], h);
+        total_text += widths[i];
+    }
+
+    if (total_text > usable)
+    {
+        // 实在放不下就退回等宽格子，让每段均摊被截断的代价
+        const int slot = usable / static_cast<int>(parts.size());
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+            const int center = Theme::kPadding + static_cast<int>(i) * slot + slot / 2;
+            m_renderer.DrawTextEllipsis(parts[i], center, y + 20, slot - 8, CRenderer::FS_SMALL,
+                                        Theme::kTextDim, CRenderer::ALIGN_CENTER);
+        }
+        return;
+    }
+
+    // 段与段之间、以及两端，都留同样宽的间隙
+    const int gap = (usable - total_text) / (static_cast<int>(parts.size()) + 1);
+    int x = Theme::kPadding + gap;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        m_renderer.DrawText(parts[i], x, y + 20, CRenderer::FS_SMALL, Theme::kTextDim);
+        x += widths[i] + gap;
     }
 }
 
@@ -472,8 +481,15 @@ void CApp::Run()
         m_renderer.BeginFrame();
         m_renderer.Clear(Theme::kBackground);
         m_screens[m_current]->Draw(m_ctx);
-        DrawHeader();
-        DrawFooter();
+        // 封面全屏这类独占画面不画顶栏底栏。
+        // 顶栏的按钮矩形也要一并清掉，否则点在图上会命中上一帧留下的位置。
+        if (m_screens[m_current]->WantsFullScreen())
+            ClearHeaderButtons();
+        else
+        {
+            DrawHeader();
+            DrawFooter();
+        }
         DrawToast(delta_seconds);
         DrawDimOverlay();
         m_renderer.EndFrame();

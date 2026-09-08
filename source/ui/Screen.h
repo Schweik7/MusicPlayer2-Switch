@@ -59,6 +59,9 @@ public:
     virtual void GoBack(ScreenContext& ctx) { ctx.next_screen = SCREEN_PLAYER; }
     // 顶栏要不要画返回按钮。播放界面是根，没有上一层。
     virtual bool CanGoBack() const { return true; }
+    // 这一帧要不要独占整块屏幕（顶栏和底栏都不画）。
+    // 封面全屏查看时用：留着两条 bar，"全屏"就名不副实。
+    virtual bool WantsFullScreen() const { return false; }
 
     // 该界面在顶栏显示的名字
     virtual const char* GetTitle() const = 0;

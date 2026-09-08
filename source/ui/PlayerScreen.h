@@ -33,6 +33,7 @@ public:
 
     // 播放界面是根，平时没有上一层；只有封面全屏时"返回"才有意义
     bool CanGoBack() const override { return m_cover_fullscreen; }
+    bool WantsFullScreen() const override { return m_cover_fullscreen; }
     void GoBack(ScreenContext& ctx) override;
 
 private:
@@ -54,20 +55,30 @@ private:
         HIT_FACE_Y,
         HIT_TOOL_DOWNLOAD,      // 歌词区右上角：下载歌词/封面
         HIT_TOOL_SYNC,          // 歌词区右上角：拖歌词是否带着进度走
+        HIT_TOOL_LAYOUT,        // 歌词区右上角：单栏 / 双栏
         HIT_OFFSET_MINUS,       // 歌词区左上角：歌词提前
-        HIT_OFFSET_PLUS         // 歌词区左上角：歌词延后
+        HIT_OFFSET_PLUS,        // 歌词区左上角：歌词延后
+        HIT_VOLUME_MINUS,       // 歌词区左上角：音量减
+        HIT_VOLUME_PLUS         // 歌词区左上角：音量加
     };
 
     void DrawCover(ScreenContext& ctx);
     void DrawSongInfo(ScreenContext& ctx);
+    // "第几首 / 共几首"。画在右栏左下角而不是左栏，左栏那一行的高度让给了封面。
+    void DrawTrackCounter(ScreenContext& ctx);
     void DrawProgressBar(ScreenContext& ctx);
     void DrawTransportButtons(ScreenContext& ctx);
     // 右下角的 ABXY 触摸键。只在单栏歌词/频谱下画：双栏时右半边是译文，会挡住。
     void DrawFaceButtons(ScreenContext& ctx);
     // 歌词区右上角的两个小按钮
     void DrawLyricTools(ScreenContext& ctx);
-    // 歌词区左上角的偏移调整。原本只有"按住 B + 方向键"能调，触摸够不着。
-    void DrawLyricOffsetTools(ScreenContext& ctx);
+    // 歌词区左上角的操作区：歌词偏移和音量，各自一组"减 · 读数 · 加"。
+    // 和左下角的方向键十字、右下角的 ABXY 菱形并列，是第三个自带说明的操作区。
+    void DrawStepTools(ScreenContext& ctx);
+    // 一组"减 · 加"按钮。中间那块读数由调用方自己画：
+    // 歌词偏移只有文字，音量还要带个喇叭图标，摆法不一样。
+    void DrawStepButtons(ScreenContext& ctx, const Rect& minus, const Rect& plus,
+                         HitButton minus_id, HitButton plus_id);
     bool FaceButtonsVisible(ScreenContext& ctx) const;
     // 当前是否按双栏排版显示歌词（要同时满足：设置开了、显示译文、这首歌真的有译文）
     bool IsTwoColumnLyric(ScreenContext& ctx) const;

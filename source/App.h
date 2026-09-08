@@ -33,6 +33,8 @@ private:
     void HandleHeaderTouch();
     void ToggleTouchEnabled();
     void DrawHeader();
+    // 顶栏不画的那些帧要把按钮矩形清空，否则会命中上一帧留下的位置
+    void ClearHeaderButtons();
     void DrawFooter();
     void DrawToast(double delta_seconds);
     // 省电模式下盖一层暗色并给出提示，让用户知道不是死机了
@@ -78,8 +80,6 @@ private:
     Rect m_touch_button;
     Rect m_settings_button;
     Rect m_playlist_button;
-    Rect m_volume_down_button;
-    Rect m_volume_up_button;
 
     std::string m_self_path;
     // 上一帧观察到的下载状态，用于识别"刚刚完成"这个瞬间

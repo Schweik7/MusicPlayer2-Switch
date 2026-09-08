@@ -18,34 +18,34 @@ namespace
     const int kLeftX = 48;
     const int kLeftWidth = 260;
 
-    const int kCoverSize = 200;
+    // 曲目计数挪到歌词区左下角之后，这里空出一行的高度，正好给封面。
+    const int kCoverSize = 226;
     const Rect kCoverRect{ kLeftX + (kLeftWidth - kCoverSize) / 2, 88, kCoverSize, kCoverSize };
 
-    const int kInfoY = 298;                 // 标题基线
-    const int kCounterY = 398;              // “第 N 首 / 共 M 首”
+    const int kInfoY = 322;                 // 标题基线
 
     // 走带按钮排成十字，位置与方向键一一对应：
     //        [上] 播放/暂停
     //  [左]        [右]      上一曲 / 下一曲
     //        [下] 停止
     // 屏幕上的布局本身就是键位说明，所以底栏不再重复方向键的指引。
-    const int kBtnW = 56;
-    const int kBtnH = 44;
-    const int kBtnGap = 6;
-    const int kCrossX = kLeftX + (kLeftWidth - (kBtnW * 3 + kBtnGap * 2)) / 2;
-    const int kCrossY = 424;
-    const int kColMid = kCrossX + kBtnW + kBtnGap;
-    const int kRowMid = kCrossY + kBtnH + kBtnGap;
-    const int kRowBottom = kRowMid + kBtnH + kBtnGap;
+    // 做成正方形：方向键本来就是四个等大的键，扁矩形读起来不像。
+    const int kBtnSize = 48;
+    const int kBtnGap = 5;
+    const int kCrossX = kLeftX + (kLeftWidth - (kBtnSize * 3 + kBtnGap * 2)) / 2;
+    const int kCrossY = 422;
+    const int kColMid = kCrossX + kBtnSize + kBtnGap;
+    const int kRowMid = kCrossY + kBtnSize + kBtnGap;
+    const int kRowBottom = kRowMid + kBtnSize + kBtnGap;
 
-    const Rect kBtnPlay{ kColMid, kCrossY, kBtnW, kBtnH };
-    const Rect kBtnPrev{ kCrossX, kRowMid, kBtnW, kBtnH };
-    const Rect kBtnNext{ kColMid + kBtnW + kBtnGap, kRowMid, kBtnW, kBtnH };
-    const Rect kBtnStop{ kColMid, kRowBottom, kBtnW, kBtnH };
+    const Rect kBtnPlay{ kColMid, kCrossY, kBtnSize, kBtnSize };
+    const Rect kBtnPrev{ kCrossX, kRowMid, kBtnSize, kBtnSize };
+    const Rect kBtnNext{ kColMid + kBtnSize + kBtnGap, kRowMid, kBtnSize, kBtnSize };
+    const Rect kBtnStop{ kColMid, kRowBottom, kBtnSize, kBtnSize };
     // 十字中心那格不放功能，只画个装饰性的轴心让它读起来像方向键
-    const Rect kCrossHub{ kColMid, kRowMid, kBtnW, kBtnH };
+    const Rect kCrossHub{ kColMid, kRowMid, kBtnSize, kBtnSize };
 
-    const int kProgressY = 586;
+    const int kProgressY = 592;
     const int kProgressH = 6;
     // 触摸热区比 6 像素的可视进度条大得多——手指点不了那么准
     const Rect kProgressHit{ kLeftX - 12, kProgressY - 20, kLeftWidth + 24, 44 };
@@ -56,15 +56,24 @@ namespace
     const int kRightY = Theme::kHeaderHeight + 16;
     const int kRightHeight = Theme::kScreenHeight - Theme::kHeaderHeight - Theme::kFooterHeight - 32;
 
-    // 歌词区右上角的两个小工具按钮
+    // 歌词区右上角：下载、拖歌词是否带进度、单栏/双栏
     const int kToolSize = 40;
     const int kToolGap = 8;
-    const Rect kBtnSync{ kRightX + kRightWidth - kToolSize, kRightY, kToolSize, kToolSize };
+    const Rect kBtnLayout{ kRightX + kRightWidth - kToolSize, kRightY, kToolSize, kToolSize };
+    const Rect kBtnSync{ kBtnLayout.x - kToolSize - kToolGap, kRightY, kToolSize, kToolSize };
     const Rect kBtnDownload{ kBtnSync.x - kToolSize - kToolGap, kRightY, kToolSize, kToolSize };
 
-    // 歌词区左上角：歌词偏移的减/加
+    // 歌词区左上角：歌词偏移和音量各自一组"减 · 读数 · 加"。
+    // 和左下角的方向键十字、右下角的 ABXY 菱形一样，是一个自带说明的操作区；
+    // 音量原本只在顶栏显示一个百分数，既不直观也占着底栏的提示位置。
+    const int kStepLabelW = 76;
     const Rect kBtnOffsetMinus{ kRightX, kRightY, kToolSize, kToolSize };
-    const Rect kBtnOffsetPlus{ kRightX + kToolSize + kToolGap + 64, kRightY, kToolSize, kToolSize };
+    const Rect kBtnOffsetPlus{ kRightX + kToolSize + kStepLabelW, kRightY, kToolSize, kToolSize };
+    const int kVolumeGroupX = kBtnOffsetPlus.x + kToolSize + 20;
+    const int kVolumeLabelW = 56;
+    const Rect kBtnVolumeMinus{ kVolumeGroupX, kRightY, kToolSize, kToolSize };
+    const Rect kBtnVolumePlus{ kVolumeGroupX + kToolSize + kVolumeLabelW, kRightY, kToolSize,
+                               kToolSize };
 
     // 右下角的 ABXY，按手柄上的实际方位摆成菱形：
     //          [X] 视图
@@ -125,7 +134,7 @@ const char* CPlayerScreen::GetButtonHints() const
     // 走带控制和 ABXY 都不写在这里：屏幕上的十字按钮与方向键一一对应，
     // 右下角的菱形按钮与 ABXY 一一对应，布局本身就是说明。
     // 用 '|' 分段，底栏会按段均匀铺开。
-    return "ZL/ZR ±5秒|左摇杆←→ ±1秒|左摇杆↑↓ 音量|右摇杆↑↓ 翻歌词|按下右摇杆 下载|− 列表|＋ 设置";
+    return "ZL/ZR ±5秒|左摇杆←→ ±1秒|右摇杆↑↓ 翻歌词|按下右摇杆 下载|− 列表|＋ 设置";
 }
 
 void CPlayerScreen::GoBack(ScreenContext& ctx)
@@ -397,8 +406,11 @@ bool CPlayerScreen::HandleLyricDrag(ScreenContext& ctx, double delta_seconds)
 
     if (touch.pressed && m_lyric_rect.Contains(touch.x, touch.y)
         && !kBtnSync.Contains(touch.x, touch.y) && !kBtnDownload.Contains(touch.x, touch.y)
+        && !kBtnLayout.Contains(touch.x, touch.y)
         && !kBtnOffsetMinus.Contains(touch.x, touch.y)
         && !kBtnOffsetPlus.Contains(touch.x, touch.y)
+        && !kBtnVolumeMinus.Contains(touch.x, touch.y)
+        && !kBtnVolumePlus.Contains(touch.x, touch.y)
         && !(FaceButtonsVisible(ctx)
              && (kBtnFaceA.Contains(touch.x, touch.y) || kBtnFaceB.Contains(touch.x, touch.y)
                  || kBtnFaceX.Contains(touch.x, touch.y) || kBtnFaceY.Contains(touch.x, touch.y))))
@@ -468,7 +480,14 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         else if (kBtnNext.Contains(touch.x, touch.y))     m_pressed_button = HIT_NEXT;
         else if (kBtnStop.Contains(touch.x, touch.y))     m_pressed_button = HIT_STOP;
         else if (kBtnDownload.Contains(touch.x, touch.y)) m_pressed_button = HIT_TOOL_DOWNLOAD;
-        else if (kBtnSync.Contains(touch.x, touch.y))     m_pressed_button = HIT_TOOL_SYNC;
+        else if (kBtnVolumeMinus.Contains(touch.x, touch.y))
+            m_pressed_button = HIT_VOLUME_MINUS;
+        else if (kBtnVolumePlus.Contains(touch.x, touch.y))
+            m_pressed_button = HIT_VOLUME_PLUS;
+        else if (lyric_view && kBtnSync.Contains(touch.x, touch.y))
+            m_pressed_button = HIT_TOOL_SYNC;
+        else if (lyric_view && kBtnLayout.Contains(touch.x, touch.y))
+            m_pressed_button = HIT_TOOL_LAYOUT;
         else if (lyric_view && kBtnOffsetMinus.Contains(touch.x, touch.y))
             m_pressed_button = HIT_OFFSET_MINUS;
         else if (lyric_view && kBtnOffsetPlus.Contains(touch.x, touch.y))
@@ -510,6 +529,23 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         else
             ctx.next_screen = SCREEN_DOWNLOAD;
     }
+    else if (lyric_view && kBtnLayout.Contains(touch.x, touch.y))
+    {
+        CConfig& config = player.GetConfig();
+        const bool two_column = !config.GetLyricTwoColumn();
+        config.SetLyricTwoColumn(two_column);
+        ctx.ShowToast(two_column ? "歌词改为双栏（左原文 右译文）" : "歌词改为单栏");
+    }
+    else if (kBtnVolumeMinus.Contains(touch.x, touch.y))
+    {
+        player.AdjustVolume(-kVolumeStep);
+        m_volume_overlay_timer = 1.5;
+    }
+    else if (kBtnVolumePlus.Contains(touch.x, touch.y))
+    {
+        player.AdjustVolume(kVolumeStep);
+        m_volume_overlay_timer = 1.5;
+    }
     else if (lyric_view && kBtnOffsetMinus.Contains(touch.x, touch.y))
     {
         player.AdjustLyricOffset(-500);
@@ -520,7 +556,7 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         player.AdjustLyricOffset(500);
         ctx.ShowToast("歌词延后 0.5 秒");
     }
-    else if (kBtnSync.Contains(touch.x, touch.y))
+    else if (lyric_view && kBtnSync.Contains(touch.x, touch.y))
     {
         const bool sync = !player.GetConfig().GetLyricSeekSync();
         player.GetConfig().SetLyricSeekSync(sync);
@@ -613,16 +649,20 @@ void CPlayerScreen::DrawSongInfo(ScreenContext& ctx)
                            Theme::kTextDisabled);
     }
 
-    // 曲目计数。只留右对齐这一处：左边那句"第 N 首 / 共 M 首"和它是同一个信息，
-    // 并排放着纯属冗余。
-    int total = player.GetPlaylistSize();
-    if (total > 0)
-    {
-        char fraction[32];
-        std::snprintf(fraction, sizeof(fraction), "%d / %d", player.GetCurrentIndex() + 1, total);
-        r.DrawText(fraction, kLeftX + kLeftWidth, kCounterY, CRenderer::FS_SMALL,
-                   Theme::kAccent, CRenderer::ALIGN_RIGHT);
-    }
+}
+
+void CPlayerScreen::DrawTrackCounter(ScreenContext& ctx)
+{
+    CPlayer& player = *ctx.player;
+    const int total = player.GetPlaylistSize();
+    if (total <= 0)
+        return;
+
+    // 放在右栏左下角。原来它占着左栏的一行，挪走之后那一行的高度给了封面。
+    char fraction[32];
+    std::snprintf(fraction, sizeof(fraction), "%d / %d", player.GetCurrentIndex() + 1, total);
+    ctx.renderer->DrawText(fraction, kRightX + 4, kRightY + kRightHeight - 26,
+                           CRenderer::FS_SMALL, Theme::kAccent);
 }
 
 void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
@@ -631,7 +671,7 @@ void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
     const bool playing = ctx.player->IsPlaying();
 
     // 先画中心轴心，让四个按钮读起来是一个方向键而不是四个孤立的方块
-    r.FillRoundRect(kCrossHub.x + 14, kCrossHub.y + 12, kCrossHub.w - 28, kCrossHub.h - 24, 4,
+    r.FillRoundRect(kCrossHub.x + 14, kCrossHub.y + 14, kCrossHub.w - 28, kCrossHub.h - 28, 4,
                     Theme::kPanel.WithAlpha(120));
 
     struct ButtonDef { const Rect& rect; HitButton id; };
@@ -645,7 +685,7 @@ void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
     for (const ButtonDef& button : buttons)
     {
         bool pressed = (m_pressed_button == button.id);
-        r.FillRoundRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, 8,
+        r.FillRoundRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, 10,
                         pressed ? Theme::kAccentDim : Theme::kPanel);
 
         const int cx = button.rect.x + button.rect.w / 2;
@@ -688,14 +728,22 @@ void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
     CRenderer& r = *ctx.renderer;
     const bool sync = ctx.player->GetConfig().GetLyricSeekSync();
 
-    struct ToolDef { const Rect& rect; HitButton id; bool active; };
+    const bool two_column = IsTwoColumnLyric(ctx);
+    // 下载针对的是当前这首歌，和看的是哪个视图无关，所以哪儿都画；
+    // 同步和单双栏只对歌词有意义。位置固定不变——按钮跟着视图挪位比留个空当更糟。
+    const bool lyric_view = (m_view == VIEW_LYRIC);
+
+    struct ToolDef { const Rect& rect; HitButton id; bool active; bool visible; };
     const ToolDef tools[] = {
-        { kBtnDownload, HIT_TOOL_DOWNLOAD, false },
-        { kBtnSync,     HIT_TOOL_SYNC,     sync  },
+        { kBtnDownload, HIT_TOOL_DOWNLOAD, false,      true },
+        { kBtnSync,     HIT_TOOL_SYNC,     sync,       lyric_view },
+        { kBtnLayout,   HIT_TOOL_LAYOUT,   two_column, lyric_view },
     };
 
     for (const ToolDef& tool : tools)
     {
+        if (!tool.visible)
+            continue;
         const bool pressed = (m_pressed_button == tool.id);
         Color background = Theme::kPanel.WithAlpha(200);
         if (pressed)
@@ -718,6 +766,19 @@ void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
             r.FillTriangle(cx - 7, cy - 2, cx + 7, cy - 2, cx, cy + 7, icon);
             r.FillRect(cx - 9, cy + 10, 18, 3, icon);
         }
+        else if (tool.id == HIT_TOOL_LAYOUT)
+        {
+            // 一栏画成整块，两栏画成并排两块——图标本身就说明了它切换的是什么
+            if (tool.active)
+            {
+                r.FillRect(cx - 10, cy - 8, 8, 16, icon);
+                r.FillRect(cx + 2, cy - 8, 8, 16, icon);
+            }
+            else
+            {
+                r.FillRect(cx - 10, cy - 8, 20, 16, icon);
+            }
+        }
         else
         {
             // 一上一下两个箭头：拖歌词时进度跟着走
@@ -729,32 +790,64 @@ void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
     }
 }
 
-void CPlayerScreen::DrawLyricOffsetTools(ScreenContext& ctx)
+void CPlayerScreen::DrawStepButtons(ScreenContext& ctx, const Rect& minus, const Rect& plus,
+                                    HitButton minus_id, HitButton plus_id)
 {
     CRenderer& r = *ctx.renderer;
-    const int offset = ctx.player->GetLyricOffset();
 
-    struct OffsetDef { const Rect& rect; HitButton id; const char* sign; };
-    const OffsetDef buttons[] = {
-        { kBtnOffsetMinus, HIT_OFFSET_MINUS, "−" },
-        { kBtnOffsetPlus,  HIT_OFFSET_PLUS,  "+" },
+    struct StepDef { const Rect& rect; HitButton id; const char* sign; };
+    const StepDef buttons[] = {
+        { minus, minus_id, "−" },
+        { plus,  plus_id,  "+" },
     };
 
-    for (const OffsetDef& button : buttons)
+    for (const StepDef& button : buttons)
     {
         const bool pressed = (m_pressed_button == button.id);
-        r.FillRoundRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, 8,
+        r.FillRoundRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, 10,
                         pressed ? Theme::kAccentDim : Theme::kPanel.WithAlpha(200));
         r.DrawText(button.sign, button.rect.x + button.rect.w / 2, button.rect.y + 6,
                    CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
     }
+}
 
-    char text[32];
-    std::snprintf(text, sizeof(text), "%+.1f 秒", offset / 1000.0);
-    r.DrawText(offset == 0 ? "歌词偏移" : text,
-               (kBtnOffsetMinus.x + kBtnOffsetMinus.w + kBtnOffsetPlus.x) / 2,
-               kRightY + 10, CRenderer::FS_SMALL,
-               offset == 0 ? Theme::kTextDisabled : Theme::kHighlight, CRenderer::ALIGN_CENTER);
+void CPlayerScreen::DrawStepTools(ScreenContext& ctx)
+{
+    CRenderer& r = *ctx.renderer;
+
+    // ---- 歌词偏移。只有歌词视图下才有意义 ----
+    if (m_view == VIEW_LYRIC)
+    {
+        DrawStepButtons(ctx, kBtnOffsetMinus, kBtnOffsetPlus, HIT_OFFSET_MINUS, HIT_OFFSET_PLUS);
+
+        const int offset = ctx.player->GetLyricOffset();
+        char offset_text[32];
+        std::snprintf(offset_text, sizeof(offset_text), "%+.1f 秒", offset / 1000.0);
+        r.DrawText(offset == 0 ? "歌词偏移" : offset_text,
+                   (kBtnOffsetMinus.x + kBtnOffsetMinus.w + kBtnOffsetPlus.x) / 2,
+                   kRightY + 10, CRenderer::FS_SMALL,
+                   offset == 0 ? Theme::kTextDisabled : Theme::kHighlight,
+                   CRenderer::ALIGN_CENTER);
+    }
+
+    // ---- 音量。和视图无关，哪个视图都要能调 ----
+    DrawStepButtons(ctx, kBtnVolumeMinus, kBtnVolumePlus, HIT_VOLUME_MINUS, HIT_VOLUME_PLUS);
+
+    // 喇叭用图形拼，不用字符：系统共享字体里未必有那个码点，缺了就是个豆腐块。
+    // 中间这块只有 kVolumeLabelW 宽，所以图标靠左、数字紧跟其后，不居中排。
+    const int volume = ctx.player->GetVolume();
+    const int icon_x = kBtnVolumeMinus.x + kBtnVolumeMinus.w + 6;
+    const int icon_y = kRightY + kToolSize / 2;
+    const Color icon = (volume == 0) ? Theme::kTextDisabled : Theme::kTextDim;
+    r.FillRect(icon_x, icon_y - 4, 5, 8, icon);
+    r.FillTriangle(icon_x + 4, icon_y - 9, icon_x + 4, icon_y + 9, icon_x + 11, icon_y, icon);
+    if (volume == 0)
+        r.DrawLine(icon_x, icon_y + 9, icon_x + 13, icon_y - 9, Theme::kHighlight);
+
+    // 不写百分号：这一栏窄，而且旁边就是加减按钮，数字是什么已经很清楚
+    char volume_text[16];
+    std::snprintf(volume_text, sizeof(volume_text), "%d", volume);
+    r.DrawText(volume_text, icon_x + 18, kRightY + 10, CRenderer::FS_SMALL, Theme::kTextDim);
 }
 
 void CPlayerScreen::DrawFaceButtons(ScreenContext& ctx)
@@ -1154,19 +1247,23 @@ void CPlayerScreen::DrawCoverFullscreen(ScreenContext& ctx)
 {
     CRenderer& r = *ctx.renderer;
 
-    r.FillRect(0, 0, Theme::kScreenWidth, Theme::kScreenHeight, Color{ 0, 0, 0, 235 });
+    r.FillRect(0, 0, Theme::kScreenWidth, Theme::kScreenHeight, Color{ 0, 0, 0, 240 });
 
-    // 按短边铺满并保持正方形：封面基本都是 1:1，直接用高度撑满最省事
-    const int size = Theme::kScreenHeight - Theme::kPadding * 2;
+    // 顶栏底栏这一帧不画（WantsFullScreen），所以整块屏幕都能用。
+    // 按短边铺满并保持正方形：封面基本都是 1:1。
+    const int size = Theme::kScreenHeight - Theme::kPadding;
     const int cx = (Theme::kScreenWidth - size) / 2;
     const int cy = (Theme::kScreenHeight - size) / 2;
     r.DrawTexture(m_cover, cx, cy, size, size);
     r.DrawRect(cx, cy, size, size, Theme::kSeparator);
 
+    // 曲名压在图片下沿，顺带提示怎么退出
     const SongInfo& song = ctx.player->GetCurrentSong();
     r.DrawTextEllipsis(song.GetDisplayName(), Theme::kScreenWidth / 2,
-                       Theme::kScreenHeight - 34, Theme::kScreenWidth - 200,
+                       Theme::kScreenHeight - 30, Theme::kScreenWidth - 200,
                        CRenderer::FS_SMALL, Theme::kTextDim, CRenderer::ALIGN_CENTER);
+    r.DrawText("点一下或按 B 返回", Theme::kScreenWidth - Theme::kPadding, 12,
+               CRenderer::FS_SMALL, Theme::kTextDisabled, CRenderer::ALIGN_RIGHT);
 }
 
 void CPlayerScreen::Draw(ScreenContext& ctx)
@@ -1182,24 +1279,21 @@ void CPlayerScreen::Draw(ScreenContext& ctx)
     DrawSongInfo(ctx);
     DrawTransportButtons(ctx);
     DrawProgressBar(ctx);
+    DrawTrackCounter(ctx);
 
     // 触摸判定用的是这一帧记下的矩形，下一帧才生效；首帧为空不会误命中
     m_lyric_rect = Rect{ kRightX, kRightY, kRightWidth, kRightHeight };
 
     if (m_view == VIEW_LYRIC)
-    {
         DrawLyricView(ctx, kRightX, kRightY, kRightWidth, kRightHeight);
-        DrawLyricTools(ctx);
-        DrawLyricOffsetTools(ctx);
-    }
     else if (m_view == VIEW_COVER)
-    {
         DrawCoverView(ctx, kRightX, kRightY, kRightWidth, kRightHeight);
-    }
     else
-    {
         DrawSpectrumView(ctx, kRightX, kRightY, kRightWidth, kRightHeight);
-    }
+
+    // 工具区画在视图之上，且不分视图：音量和下载在哪个视图下都得点得到
+    DrawLyricTools(ctx);
+    DrawStepTools(ctx);
 
     if (FaceButtonsVisible(ctx))
         DrawFaceButtons(ctx);
