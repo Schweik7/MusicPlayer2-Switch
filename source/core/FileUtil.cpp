@@ -280,7 +280,10 @@ bool CopyFileTo(const std::string& src, const std::string& dst)
         ok = false;
 
     std::fclose(in);
-    std::fclose(out);
+    // fclose 的返回值必须看：缓冲区最后一次刷盘就发生在这里，
+    // 卡满或写失败往往只在这一刻才暴露。忽略它就会拿到一个"成功"的半截文件。
+    if (std::fclose(out) != 0)
+        ok = false;
     CommitDevice(dst);
     if (!ok)
         std::remove(dst.c_str());       // 别留下半截文件
@@ -397,7 +400,9 @@ bool WriteAll(const std::string& path, const std::string& content)
         return false;
     size_t written = content.empty() ? 0 : std::fwrite(content.data(), 1, content.size(), fp);
     bool ok = (written == content.size());
-    std::fclose(fp);
+    // 同上：最后一次刷盘在 fclose 里，它的返回值不能丢
+    if (std::fclose(fp) != 0)
+        ok = false;
     // 必须提交，否则文件在 SD 卡上是个大小为 0、stat 不到的坏条目
     CommitDevice(path);
     return ok;

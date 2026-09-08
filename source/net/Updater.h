@@ -34,7 +34,10 @@ public:
         std::string release_notes;
         std::string asset_url;
         uint64_t downloaded{};
-        uint64_t total{};
+        uint64_t total{};           // 进度条用，下载中会被 curl 报的值覆盖
+        // Release 里声明的资产大小。和 total 分开存：total 会被进度回调改写，
+        // 也会在开始下载时清零，拿它当校验基准会让校验形同虚设。
+        uint64_t asset_size{};
 
         // 这次结果来自备用源而不是 GitHub
         bool from_mirror{};
@@ -74,6 +77,9 @@ private:
     // GitHub 和备用源返回的 JSON 形状相同，所以这一段能共用。
     bool QueryRelease(const std::string& url, bool from_mirror, std::string& error);
     void DoInstall();
+    // 替换失败时把备份放回程序位置。放不回去就在状态里说明备份在哪，
+    // 那种情况下用户手上是没有可运行的 NRO 的，必须给出可操作的下一步。
+    void RestoreBackup(bool had_old, const std::string& backup_path);
     void SetStatus(State state, const std::string& message);
 
     CCurlHttpClient* m_http{};

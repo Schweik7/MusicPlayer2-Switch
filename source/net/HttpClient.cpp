@@ -359,17 +359,19 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
     if (header_list != nullptr)
         curl_slist_free_all(header_list);
     curl_easy_cleanup(curl);
-    std::fclose(fp);
+    // fclose 的返回值必须看：缓冲区最后一次刷盘就发生在这里。
+    // 忽略它的话，写失败会伪装成一次成功的下载，留下一个半截文件。
+    const bool close_ok = (std::fclose(fp) == 0);
     // 关文件之后必须提交，否则大文件在 SD 卡上是个空壳
     FileUtil::CommitDevice(dest_path);
 
-    bool ok = (code == CURLE_OK) && status >= 200 && status < 300;
+    bool ok = close_ok && (code == CURLE_OK) && status >= 200 && status < 300;
     if (!ok)
     {
         if (ctx.cancelled)
             error = "已取消";
-        else if (ctx.write_failed)
-            error = "写入 SD 卡失败";
+        else if (ctx.write_failed || !close_ok)
+            error = "写入 SD 卡失败（卡满或写入出错）";
         else if (code != CURLE_OK)
         {
             char buff[32];
@@ -390,7 +392,28 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
     // 服务器报了长度就核对一下，截断的下载绝不能拿去替换程序
     if (ctx.total > 0 && ctx.written != ctx.total)
     {
-        error = "下载不完整";
+        char buff[96];
+        std::snprintf(buff, sizeof(buff), "下载不完整（收到 %llu / %llu 字节）",
+                      static_cast<unsigned long long>(ctx.written),
+                      static_cast<unsigned long long>(ctx.total));
+        error = buff;
+        std::remove(dest_path.c_str());
+        return false;
+    }
+
+    // 再核对一次落到卡上的实际大小。
+    //
+    // 上面那个检查看的是"交给 fwrite 多少字节"，这里看的是"卡上真有多少字节"，
+    // 两者不是一回事：写入缓冲、提交失败、卡满都会让后者小于前者。
+    // 用户遇到过一次 10.9MB 的更新在卡上只剩 2MB，而下载本身报的是成功。
+    const uint64_t on_disk = FileUtil::GetFileSize(dest_path);
+    if (on_disk != ctx.written)
+    {
+        char buff[112];
+        std::snprintf(buff, sizeof(buff), "写入 SD 卡不完整（卡上 %llu / 应有 %llu 字节）",
+                      static_cast<unsigned long long>(on_disk),
+                      static_cast<unsigned long long>(ctx.written));
+        error = buff;
         std::remove(dest_path.c_str());
         return false;
     }

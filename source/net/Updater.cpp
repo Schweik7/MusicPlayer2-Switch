@@ -155,6 +155,7 @@ bool CUpdater::QueryRelease(const std::string& url, bool from_mirror, std::strin
     m_status.release_notes = info.notes;
     m_status.asset_url = info.asset_url;
     m_status.total = info.asset_size;
+    m_status.asset_size = info.asset_size;
     m_status.from_mirror = from_mirror;
     // 只有 https 才能确认对面是谁。备用源现在走的是明文 http，
     // 那种情况下安装的是一个来路无法确认的可执行文件，得让用户知道。
@@ -208,36 +209,90 @@ void CUpdater::DoCheck()
     }
 }
 
+void CUpdater::RestoreBackup(bool had_old, const std::string& backup_path)
+{
+    if (!had_old)
+        return;
+    // 还原失败是最坏的情况：程序位置上没有可用的 NRO 了。
+    // 那就把备份留在原地并告诉用户它在哪，至少能手动改回来。
+    if (!FileUtil::MoveOverwrite(backup_path, m_self_path))
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_status.message = "还原失败，原版本仍在 " + backup_path + "，请手动改回 "
+                         + m_self_path;
+    }
+}
+
 void CUpdater::DoInstall()
 {
     std::string url;
     bool verified = true;
+    bool from_mirror = false;
+    uint64_t expected_size = 0;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         url = m_status.asset_url;
         verified = m_status.asset_verified;
+        from_mirror = m_status.from_mirror;
+        expected_size = m_status.asset_size;    // Release 里声明的大小，不受进度回调影响
     }
 
     const std::string temp_path = m_self_path + ".new";
     const std::string backup_path = m_self_path + ".bak";
 
+    auto progress = [this](uint64_t downloaded, uint64_t total) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_status.downloaded = downloaded;
+        if (total > 0)
+            m_status.total = total;
+        return !m_cancel.load();
+    };
+
     std::string error;
-    bool ok = m_http->DownloadToFile(
-        url, {}, temp_path,
-        // 会被执行的内容，能验证就一定要验。
-        // 备用源目前是明文 http，验不了——换成 https 之后这里自动恢复强校验。
-        verified,
-        [this](uint64_t downloaded, uint64_t total) {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_status.downloaded = downloaded;
-            if (total > 0)
-                m_status.total = total;
-            return !m_cancel.load();
-        },
-        error);
+    // 会被执行的内容，能验证就一定要验。
+    // 非 https 的地址验不了，那种情况下 verified 为 false（见 QueryRelease）。
+    bool ok = m_http->DownloadToFile(url, {}, temp_path, verified, progress, error);
+
+    // 下载失败也要回退到备用源。
+    //
+    // 原来只有"检查更新"会回退，下载不会——但 GitHub 的资产下载走的是另一个 CDN，
+    // 恰恰是最容易连上之后半路断掉的那一环：接口查得到新版本，文件却下不全。
+    if (!ok && !from_mirror && !m_cancel.load())
+    {
+        std::remove(temp_path.c_str());
+        SetStatus(ST_DOWNLOADING, "主源下载失败，改用备用源…");
+
+        std::string mirror_error;
+        if (QueryRelease(MP2_SWITCH_MIRROR_URL, true, mirror_error))
+        {
+            std::string mirror_url;
+            bool mirror_verified = true;
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                mirror_url = m_status.asset_url;
+                mirror_verified = m_status.asset_verified;
+                expected_size = m_status.asset_size;
+                m_status.state = ST_DOWNLOADING;
+                m_status.downloaded = 0;
+            }
+            if (!mirror_url.empty())
+            {
+                std::string retry_error;
+                ok = m_http->DownloadToFile(mirror_url, {}, temp_path, mirror_verified,
+                                            progress, retry_error);
+                if (!ok)
+                    error += "；备用源也失败：" + retry_error;
+            }
+        }
+        else
+        {
+            error += "；备用源不可用：" + mirror_error;
+        }
+    }
 
     if (!ok)
     {
+        std::remove(temp_path.c_str());
         SetStatus(ST_FAILED, "下载失败：" + error);
         return;
     }
@@ -248,28 +303,56 @@ void CUpdater::DoInstall()
         return;
     }
 
+    // 下载下来的大小必须和 Release 声明的一致。
+    //
+    // 这一步是在替换任何东西之前做的，因此失败时用户手上的程序完好无损。
+    // 用户遇到过一次：10.9MB 的更新在卡上只剩 2MB，而下载环节报的是成功，
+    // 于是流程一路走到"替换自身"才崩，把好好的程序换掉了一半。
+    const uint64_t downloaded = FileUtil::GetFileSize(temp_path);
+    if (expected_size > 0 && downloaded != expected_size)
+    {
+        std::remove(temp_path.c_str());
+        SetStatus(ST_FAILED, "下载的文件大小不对（" + std::to_string(downloaded) + " / 应为 "
+                             + std::to_string(expected_size) + " 字节），已放弃更新");
+        return;
+    }
+
     // 替换自身。先把旧文件挪到备份名，确认新文件就位后再删备份；
     // 中途任何一步失败都要把旧文件放回去，否则程序就没了。
     //
     // 改名和复制都试：实机上 std::rename 会失败（用户遇到过"无法备份当前版本"），
     // Switch 的 FS 层对改名的支持并不可靠。复制慢一些但一定能用。
     std::remove(backup_path.c_str());
-    bool had_old = FileUtil::Exists(m_self_path);
+    const bool had_old = FileUtil::Exists(m_self_path);
     if (had_old && !FileUtil::MoveOverwrite(m_self_path, backup_path))
     {
         std::remove(temp_path.c_str());
         SetStatus(ST_FAILED, "无法备份当前版本，已放弃更新（errno=" + std::to_string(errno) + "）");
         return;
     }
+
     if (!FileUtil::MoveOverwrite(temp_path, m_self_path))
     {
-        if (had_old)
-            FileUtil::MoveOverwrite(backup_path, m_self_path);       // 回滚
-        std::remove(temp_path.c_str());
-        SetStatus(ST_FAILED, "无法写入新版本，已还原原有版本（errno="
-                             + std::to_string(errno) + "）");
+        RestoreBackup(had_old, backup_path);
+        // 下载好的文件留着不删：重新下一次要好几分钟，而它本身是完整的。
+        SetStatus(ST_FAILED, std::string("无法写入新版本（errno=") + std::to_string(errno)
+                             + "）。已下载好的文件留在 " + temp_path
+                             + "，可以手动改名替换");
         return;
     }
+
+    // 换上去之后再核对一次。改名或复制都可能"成功返回"却只写了一半，
+    // 而这一步写坏的是程序自己——下次就再也启动不了了。
+    const uint64_t installed = FileUtil::GetFileSize(m_self_path);
+    if (expected_size > 0 && installed != expected_size)
+    {
+        RestoreBackup(had_old, backup_path);
+        SetStatus(ST_FAILED, "写入后校验不通过（" + std::to_string(installed) + " / 应为 "
+                             + std::to_string(expected_size) + " 字节），已还原原有版本");
+        return;
+    }
+
+    // 校验通过才删备份
     std::remove(backup_path.c_str());
     // 整个替换过程都要提交，否则 SD 卡上留下的是个大小为 0 的坏 NRO，
     // 下次就再也启动不了了

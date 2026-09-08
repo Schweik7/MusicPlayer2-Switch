@@ -474,6 +474,46 @@ static void TestFileRoundTrip()
     CConfig missing;
     CHECK(!missing.Load(dir + "/does_not_exist.ini"));
 
+    // ---- 文件大小与替换 ----
+    //
+    // 自动更新踩过的坑：10.9MB 的下载在卡上只剩 2MB，而下载环节报的是成功，
+    // 流程一路走到"替换自身"才失败。校验的基准是"卡上实际有多少字节"，
+    // 所以 GetFileSize 必须准，MoveOverwrite 之后大小必须不变。
+    const std::string big_path = dir + "/sized.bin";
+    const std::string payload(200000, 'x');
+    CHECK(FileUtil::WriteAll(big_path, payload));
+    CHECK_EQ_INT(static_cast<long long>(FileUtil::GetFileSize(big_path)), 200000);
+
+    const std::string moved_path = dir + "/sized_moved.bin";
+    CHECK(FileUtil::MoveOverwrite(big_path, moved_path));
+    CHECK(!FileUtil::Exists(big_path));                 // 源文件必须消失
+    CHECK_EQ_INT(static_cast<long long>(FileUtil::GetFileSize(moved_path)), 200000);
+
+    // 顶替一个已存在的文件：结果应该是源文件的内容，不是两者拼在一起
+    const std::string victim_path = dir + "/victim.bin";
+    CHECK(FileUtil::WriteAll(victim_path, std::string(50, 'a')));
+    CHECK(FileUtil::WriteAll(big_path, std::string(10, 'b')));
+    CHECK(FileUtil::MoveOverwrite(big_path, victim_path));
+    CHECK_EQ_INT(static_cast<long long>(FileUtil::GetFileSize(victim_path)), 10);
+    std::string victim_content;
+    CHECK(FileUtil::ReadAll(victim_path, victim_content));
+    CHECK_EQ(victim_content, std::string(10, 'b'));
+
+    // 源文件不存在时必须失败，而不是把目标文件删掉了事
+    CHECK(!FileUtil::MoveOverwrite(dir + "/no_such_file.bin", victim_path));
+
+    CHECK_EQ_INT(static_cast<long long>(FileUtil::GetFileSize(dir + "/no_such_file.bin")), 0);
+
+    // 按偏移读：MP3 时长要靠它跳过几百 KB 的 ID3v2
+    CHECK(FileUtil::WriteAll(big_path, "0123456789"));
+    std::string range;
+    CHECK(FileUtil::ReadRange(big_path, 4, 3, range));
+    CHECK_EQ(range, "456");
+    // 越过文件尾时读到多少算多少
+    CHECK(FileUtil::ReadRange(big_path, 8, 100, range));
+    CHECK_EQ(range, "89");
+    CHECK(!FileUtil::ReadRange(big_path, 100, 10, range));
+
     // 目录扫描。扫描目录与歌词目录刻意分开，这样重复运行测试的结果是幂等的
     // （否则上一轮留下的文件会让计数变多）
     std::string scan_dir = dir + "/scan";
