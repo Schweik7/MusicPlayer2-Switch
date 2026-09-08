@@ -331,7 +331,17 @@ void CSettingsScreen::DrawUpdateStatus(ScreenContext& ctx, int x, int y, int wid
     }
     else if (status.state == CUpdater::ST_UPDATE_AVAILABLE)
     {
-        r.DrawText("按 A 下载并安装", x, y + 26, CRenderer::FS_SMALL, Theme::kTextDim);
+        if (status.asset_verified)
+        {
+            r.DrawText("按 A 下载并安装", x, y + 26, CRenderer::FS_SMALL, Theme::kTextDim);
+        }
+        else
+        {
+            // 明文 http 的下载地址验不了服务器身份，装的是一个来路无法确认的
+            // 可执行文件。这话必须说在按 A 之前。
+            r.DrawText("按 A 下载并安装 · 来自备用源，无法验证服务器身份",
+                       x, y + 26, CRenderer::FS_SMALL, Theme::kHighlight);
+        }
     }
 }
 

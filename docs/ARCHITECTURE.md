@@ -16,7 +16,7 @@
 | 界面 | MFC + 自绘 UIElement + skins | SDL2 自绘，手柄/触摸驱动 |
 | 音频内核 | BASS / FFmpeg（`IPlayerCore`） | SDL2_mixer + 自己实现的 libFLAC 解码路径 |
 | 字体 | 系统字体 + GDI | Switch 系统共享字体（`plGetSharedFontByType`） |
-| 配置 | ini + 注册表 | `sdmc:/switch/MusicPlayer2/config.ini` |
+| 配置 | ini + 注册表 | `sdmc:/config/MusicPlayer2/config.ini` |
 | 网络 | WinINet | libcurl + mbedTLS（libnx 的 socket / nifm） |
 | JSON | nlohmann/json | 自带的精简只读解析器（`net/Json.h`） |
 | 标签读取 | taglib | 自己实现的 `core/AudioTag` |
@@ -333,11 +333,17 @@ Windows 的窄字符 CRT 接口按 ANSI 代码页解释路径，UTF-8 的中文�
 
 | 路径 | 内容 |
 | --- | --- |
-| `sdmc:/switch/MusicPlayer2/config.ini` | 音量、播放模式、上次播放列表与位置、各项设置 |
-| `sdmc:/switch/MusicPlayer2/pathmap.ini` | Windows 路径 ↔ sdmc 路径的映射规则、默认音乐目录 |
-| `sdmc:/switch/MusicPlayer2/cacert.pem` | 可选。优先于 romfs 内置的那份 |
-| `sdmc:/switch/MusicPlayer2/diag.flag` | 存在则启用诊断；内容里每行一个目录路径会被枚举 |
-| `sdmc:/switch/MusicPlayer2/diag.log` | 诊断输出 |
+| `sdmc:/config/MusicPlayer2/config.ini` | 音量、播放模式、上次播放列表与位置、各项设置 |
+| `sdmc:/config/MusicPlayer2/pathmap.ini` | Windows 路径 ↔ sdmc 路径的映射规则、默认音乐目录 |
+| `sdmc:/config/MusicPlayer2/cacert.pem` | 可选。优先于 romfs 内置的那份 |
+| `sdmc:/config/MusicPlayer2/diag.flag` | 存在则启用诊断；内容里每行一个目录路径会被枚举 |
+| `sdmc:/config/MusicPlayer2/diag.log` | 诊断输出 |
+| `sdmc:/config/MusicPlayer2/font.ttf` | 可选。用户自带字体，插在系统字体前面 |
+
+数据目录在 0.6.3 之前是 `sdmc:/switch/MusicPlayer2/`。homebrew 的惯例是
+配置放 `sdmc:/config/<应用名>/`、`/switch/` 只放 NRO，所以改了过来。
+`CPlayer::MigrateLegacyDataDir` 会在启动时把旧位置的几个文件搬过去——
+只搬我们自己写的那几个，新位置已有同名文件时不覆盖（那是用户更新过的版本）。
 
 `PathMapper` 的前缀匹配必须是**最长匹配**：规则可能互相嵌套（`D:\Music\` 与
 `D:\Music\ACG\`），按声明顺序匹配会让较短的规则抢先命中。这是主机端测试抓到的缺陷。

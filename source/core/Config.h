@@ -2,7 +2,7 @@
 #include <map>
 #include <string>
 
-// 简单的 key=value 配置文件（sdmc:/switch/MusicPlayer2/config.ini）。
+// 简单的 key=value 配置文件（sdmc:/config/MusicPlayer2/config.ini）。
 // 不引入第三方 ini 库：Switch 端只需要几十个标量设置项。
 class CConfig
 {

@@ -5,7 +5,7 @@
 // 桌面版 MusicPlayer2 保存的播放列表里存的是 Windows 绝对路径（如 "D:\Music\a.mp3"）。
 // Switch 上只有 "sdmc:/" 这一个可写挂载点，因此需要一层前缀映射把它们翻译过去。
 //
-// 映射规则来自 sdmc:/switch/MusicPlayer2/pathmap.ini，形如：
+// 映射规则来自 sdmc:/config/MusicPlayer2/pathmap.ini，形如：
 //     D:\Music\ = sdmc:/music/
 //     E:\ACG\   = sdmc:/music/acg/
 // 未命中任何规则时退化为：取盘符后的相对部分拼到默认音乐目录下。

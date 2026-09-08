@@ -27,13 +27,47 @@ CPlayer::~CPlayer()
 
 std::string CPlayer::GetDataDir()
 {
+    // homebrew 的惯例是把配置放在 sdmc:/config/<应用名>/ 下，
+    // /switch/ 只放 NRO 本身。早期版本写在了 /switch/MusicPlayer2/，
+    // 见 MigrateLegacyDataDir。
+    return "sdmc:/config/MusicPlayer2";
+}
+
+std::string CPlayer::GetLegacyDataDir()
+{
     return "sdmc:/switch/MusicPlayer2";
+}
+
+void CPlayer::MigrateLegacyDataDir()
+{
+    const std::string old_dir = GetLegacyDataDir();
+    const std::string new_dir = GetDataDir();
+    if (!FileUtil::IsDirectory(old_dir))
+        return;
+
+    // 逐个文件搬，不整目录移动：目录里可能有别的东西，
+    // 而且 Switch 上目录改名本来就不可靠（见 FileUtil::MoveOverwrite）。
+    // 只搬我们自己写的那几个，其余留在原地不动。
+    static const char* kFiles[] = {
+        "config.ini", "pathmap.ini", "cacert.pem", "font.ttf",
+    };
+    for (const char* name : kFiles)
+    {
+        const std::string from = FileUtil::Combine(old_dir, name);
+        const std::string to = FileUtil::Combine(new_dir, name);
+        // 新位置已经有了就不动：那是用户更新过的版本，不该被旧文件盖掉
+        if (!FileUtil::Exists(from) || FileUtil::Exists(to))
+            continue;
+        FileUtil::MoveOverwrite(from, to);
+    }
 }
 
 bool CPlayer::Init()
 {
     std::string data_dir = GetDataDir();
     FileUtil::CreateDirRecursive(data_dir);
+    // 目录建好之后再搬，否则搬过去没地方放
+    MigrateLegacyDataDir();
 
     m_config.Load(FileUtil::Combine(data_dir, "config.ini"));
 

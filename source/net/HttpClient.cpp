@@ -77,7 +77,8 @@ void CCurlHttpClient::LocateCaBundle()
 {
     // 优先用户放在 SD 卡上的证书包（方便更新），其次是打进 romfs 的那份
     const char* candidates[] = {
-        "sdmc:/switch/MusicPlayer2/cacert.pem",
+        "sdmc:/config/MusicPlayer2/cacert.pem",
+        "sdmc:/switch/MusicPlayer2/cacert.pem",       // 0.6.2 之前的位置
         "romfs:/cacert.pem",
     };
     for (const char* path : candidates)

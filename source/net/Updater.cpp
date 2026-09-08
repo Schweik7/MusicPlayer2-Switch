@@ -3,6 +3,7 @@
 #include "ReleaseInfo.h"
 #include "../Version.h"
 #include "../core/FileUtil.h"
+#include "../core/StringUtil.h"
 #include "../core/VersionUtil.h"
 
 #include <cerrno>
@@ -132,59 +133,89 @@ bool CUpdater::StartInstall()
     return true;
 }
 
-void CUpdater::DoCheck()
+bool CUpdater::QueryRelease(const std::string& url, bool from_mirror, std::string& error)
 {
     HttpResponse response;
     std::vector<std::string> headers{
         "Accept: application/vnd.github+json",
         "X-GitHub-Api-Version: 2022-11-28",
     };
-    if (!m_http->Get(kApiUrl, headers, response))
+    if (!m_http->Get(url, headers, response))
     {
-        SetStatus(ST_FAILED, "检查更新失败：" + response.error);
-        return;
+        error = response.error;
+        return false;
     }
-    if (m_cancel.load())
-        return;
 
     ReleaseInfo::Info info;
-    std::string error;
     if (!ReleaseInfo::Parse(response.body, MP2_SWITCH_ASSET_NAME, info, error))
-    {
-        SetStatus(ST_FAILED, "检查更新失败：" + error);
-        return;
-    }
+        return false;
 
     std::lock_guard<std::mutex> lock(m_mutex);
     m_status.latest_version = info.tag;
     m_status.release_notes = info.notes;
     m_status.asset_url = info.asset_url;
     m_status.total = info.asset_size;
+    m_status.from_mirror = from_mirror;
+    // 只有 https 才能确认对面是谁。备用源现在走的是明文 http，
+    // 那种情况下安装的是一个来路无法确认的可执行文件，得让用户知道。
+    m_status.asset_verified = StringUtil::StartsWith(info.asset_url, "https://");
+    return true;
+}
 
-    if (!IsNewerVersion(info.tag, MP2_SWITCH_VERSION))
+void CUpdater::DoCheck()
+{
+    std::string error;
+    bool ok = QueryRelease(kApiUrl, false, error);
+
+    // GitHub 在部分地区连不上，回退到备用源。
+    // 注意只在"没拿到结果"时回退：拿到了但版本更旧不算失败。
+    if (!ok && !m_cancel.load())
+    {
+        std::string mirror_error;
+        if (QueryRelease(MP2_SWITCH_MIRROR_URL, true, mirror_error))
+            ok = true;
+        else
+            error += "；备用源也失败：" + mirror_error;
+    }
+
+    if (m_cancel.load())
+        return;
+    if (!ok)
+    {
+        SetStatus(ST_FAILED, "检查更新失败：" + error);
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const std::string source = m_status.from_mirror ? "（备用源）" : "";
+
+    if (!IsNewerVersion(m_status.latest_version, MP2_SWITCH_VERSION))
     {
         m_status.state = ST_UP_TO_DATE;
-        m_status.message = "已是最新版本（" MP2_SWITCH_VERSION "）";
+        m_status.message = "已是最新版本（" MP2_SWITCH_VERSION "）" + source;
     }
-    else if (info.asset_url.empty())
+    else if (m_status.asset_url.empty())
     {
         // 有新版本但没带 NRO，只能让用户自己去下
         m_status.state = ST_FAILED;
-        m_status.message = "发现 " + info.tag + "，但该版本没有附带 " MP2_SWITCH_ASSET_NAME;
+        m_status.message = "发现 " + m_status.latest_version
+                         + "，但该版本没有附带 " MP2_SWITCH_ASSET_NAME;
     }
     else
     {
         m_status.state = ST_UPDATE_AVAILABLE;
-        m_status.message = "发现新版本 " + info.tag;
+        m_status.message = "发现新版本 " + m_status.latest_version + source;
     }
 }
 
 void CUpdater::DoInstall()
 {
     std::string url;
+    bool verified = true;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         url = m_status.asset_url;
+        verified = m_status.asset_verified;
     }
 
     const std::string temp_path = m_self_path + ".new";
@@ -193,7 +224,9 @@ void CUpdater::DoInstall()
     std::string error;
     bool ok = m_http->DownloadToFile(
         url, {}, temp_path,
-        true,                                   // 会被执行的内容，必须验证证书
+        // 会被执行的内容，能验证就一定要验。
+        // 备用源目前是明文 http，验不了——换成 https 之后这里自动恢复强校验。
+        verified,
         [this](uint64_t downloaded, uint64_t total) {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_status.downloaded = downloaded;

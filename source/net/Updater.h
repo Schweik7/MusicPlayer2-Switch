@@ -35,6 +35,12 @@ public:
         std::string asset_url;
         uint64_t downloaded{};
         uint64_t total{};
+
+        // 这次结果来自备用源而不是 GitHub
+        bool from_mirror{};
+        // 下载地址能否验证服务器身份（https 才能）。
+        // 为 false 时安装的是一个来路无法确认的可执行文件，界面上必须说明。
+        bool asset_verified{ true };
     };
 
     ~CUpdater();
@@ -64,6 +70,9 @@ private:
     void RunTask(void (CUpdater::*task)());
     void JoinWorker();
     void DoCheck();
+    // 向一个 Release 接口发查询并填好 m_status。成功返回 true。
+    // GitHub 和备用源返回的 JSON 形状相同，所以这一段能共用。
+    bool QueryRelease(const std::string& url, bool from_mirror, std::string& error);
     void DoInstall();
     void SetStatus(State state, const std::string& message);
 

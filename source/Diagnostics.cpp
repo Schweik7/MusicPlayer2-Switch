@@ -29,8 +29,10 @@ namespace
     FILE* g_log_file = nullptr;
     int g_lines_since_commit = 0;
 
-    const char* kDiagDir = "sdmc:/switch/MusicPlayer2/diag";
-    const char* kLogPath = "sdmc:/switch/MusicPlayer2/diag.log";
+    const char* kDiagDir = "sdmc:/config/MusicPlayer2/diag";
+    const char* kFlagPath = "sdmc:/config/MusicPlayer2/diag.flag";
+    const char* kLegacyFlagPath = "sdmc:/switch/MusicPlayer2/diag.flag";
+    const char* kLogPath = "sdmc:/config/MusicPlayer2/diag.log";
 
     // 待测文件名。按 UTF-8 编码长度分组：如果 2 字节能过而 3 字节不行，
     // 说明问题出在编码长度上；如果全部非 ASCII 都不行，那是另一回事。
@@ -86,7 +88,8 @@ bool Begin()
 {
     // 通过 nxlink 推送启动时 __nxlink_host 会被填上开发机地址
     bool via_nxlink = (__nxlink_host.s_addr != 0);
-    bool has_flag = FileUtil::Exists("sdmc:/switch/MusicPlayer2/diag.flag");
+    // 新旧两个位置都认：让老的排查说明不至于突然失效
+    bool has_flag = FileUtil::Exists(kFlagPath) || FileUtil::Exists(kLegacyFlagPath);
     if (!via_nxlink && !has_flag)
         return false;
 
@@ -294,7 +297,7 @@ void ProbeFileSystem()
 
     Logf("");
     Logf("---- 关键路径实测 ----");
-    const char* kDirs[] = { "sdmc:/", "sdmc:/music", "sdmc:/switch", "sdmc:/switch/MusicPlayer2" };
+    const char* kDirs[] = { "sdmc:/", "sdmc:/music", "sdmc:/switch", "sdmc:/config/MusicPlayer2" };
     for (const char* d : kDirs)
     {
         Logf("  %-28s 存在=%s 是目录=%s", d,
@@ -305,7 +308,8 @@ void ProbeFileSystem()
     // diag.flag 里每行写一个目录路径，就会被逐个枚举。
     // 这样要查哪个目录可以随时从 SD 卡上改，不用把用户的目录名写死在源码里。
     std::string flag_content;
-    if (FileUtil::ReadAll("sdmc:/switch/MusicPlayer2/diag.flag", flag_content))
+    if (FileUtil::ReadAll(kFlagPath, flag_content)
+        || FileUtil::ReadAll(kLegacyFlagPath, flag_content))
     {
         size_t start = 0;
         while (start < flag_content.size())

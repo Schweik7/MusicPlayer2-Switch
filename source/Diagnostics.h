@@ -7,7 +7,8 @@ class CCurlHttpClient;
 // 实机诊断。
 //
 // 通过 nxlink 启动时（nxlink -s ...）自动启用，把探测结果打到开发机的终端上；
-// 也可以在 SD 卡上放一个 sdmc:/switch/MusicPlayer2/diag.flag 手动打开。
+// 也可以在 SD 卡上放一个 sdmc:/config/MusicPlayer2/diag.flag 手动打开
+// （旧位置 sdmc:/switch/MusicPlayer2/diag.flag 仍然认）。
 // 正常从 hbmenu 启动时全部是空操作，不影响启动速度。
 namespace Diag
 {

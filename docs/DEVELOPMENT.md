@@ -130,7 +130,8 @@ nxlink -a <IP> -s SwitchPort/MusicPlayer2.nro
 
 ### 启用
 
-在 `sdmc:/switch/MusicPlayer2/` 放一个 `diag.flag`。通过 nxlink 启动时自动启用。
+在 `sdmc:/config/MusicPlayer2/` 放一个 `diag.flag`（旧位置 `sdmc:/switch/MusicPlayer2/`
+仍然认）。通过 nxlink 启动时自动启用。
 
 文件内容里**每行一个目录路径**（`sdmc:/` 开头）会被逐条枚举并 `stat`，例如：
 
@@ -141,7 +142,7 @@ sdmc:/switch/dao_chu
 
 ### 输出
 
-写到 `sdmc:/switch/MusicPlayer2/diag.log`（同时打到 stdout）。内容包括：
+写到 `sdmc:/config/MusicPlayer2/diag.log`（同时打到 stdout）。内容包括：
 
 - 文件系统对不同 UTF-8 编码长度的文件名的支持情况（创建 / stat / 重新打开 / readdir 回读）
 - 指定目录的逐条枚举结果与 stat 成败统计
@@ -168,7 +169,7 @@ sdmc:/switch/dao_chu
 取回：
 
 ```bash
-curl "ftp://<IP>:<PORT>/switch/MusicPlayer2/diag.log" -o diag.log
+curl "ftp://<IP>:<PORT>/config/MusicPlayer2/diag.log" -o diag.log
 ```
 
 ---
@@ -216,7 +217,38 @@ gh api repos/<owner>/<repo>/releases/latest --jq '.assets[0].size'
 stat -c%s SwitchPort/MusicPlayer2.nro
 ```
 
-### 6.4 更新功能依赖的约定
+### 6.4 同步到备用源
+
+GitHub 在部分地区访问不稳定，所以更新检查失败时会回退到一个自建的镜像。
+发完 GitHub Release 之后要把同一份 NRO 同步过去：
+
+```bash
+scp SwitchPort/MusicPlayer2.nro root@<主机>:/var/www/mp2/
+ssh root@<主机> "cat > /var/www/mp2/latest.json" <<'JSON'
+{
+  "tag_name": "v0.6.3",
+  "body": "……更新说明……",
+  "assets": [{
+    "name": "MusicPlayer2.nro",
+    "size": 10895681,
+    "browser_download_url": "http://<主机>:8888/MusicPlayer2.nro"
+  }]
+}
+JSON
+```
+
+**清单刻意做成和 GitHub Release API 一样的形状**，这样 `ReleaseInfo::Parse`
+一份代码解析两边，不必维护第二个解析器，也不会出现"两边格式漂移"这种问题。
+
+镜像地址写在 `source/Version.h` 的 `MP2_SWITCH_MIRROR_URL`。
+
+**关于明文 HTTP**：备用源现在没有域名，只能按 IP 走 http。
+这意味着无法验证服务器身份，路径上的任何人都能替换掉那个会被执行的 NRO。
+程序为此做了两件事：下载地址不是 `https://` 开头时关闭证书校验（否则必然失败），
+同时在界面上明确写出"来自备用源，无法验证服务器身份"。
+换成 https 之后这两处都会自动恢复成强校验，不需要改代码。
+
+### 6.5 更新功能依赖的约定
 
 `net/Updater` 在 Release 的 `assets` 里按**文件名**查找，见 `Version.h` 的
 `MP2_SWITCH_ASSET_NAME`（`MusicPlayer2.nro`）。改名会让旧版本认为"有新版本但没带 NRO"。

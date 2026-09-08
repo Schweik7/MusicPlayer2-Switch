@@ -90,7 +90,13 @@ public:
     const std::string& GetLastError() const { return m_last_error; }
 
     // 配置与数据的存放目录
+    // 配置和缓存的存放位置。homebrew 惯例是 sdmc:/config/<应用名>/。
     static std::string GetDataDir();
+    // 0.6.2 及更早版本用的位置
+    static std::string GetLegacyDataDir();
+    // 把旧位置的配置搬到新位置。只搬我们自己写的那几个文件，
+    // 新位置已存在同名文件时不覆盖。
+    static void MigrateLegacyDataDir();
 
 private:
     void LoadLyricForCurrentSong();
