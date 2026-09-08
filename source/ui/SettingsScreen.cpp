@@ -74,6 +74,11 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_TRANSLATION].value = config.GetShowTranslation() ? "开启" : "关闭";
     m_rows[ITEM_TRANSLATION].actionable = true;
 
+    m_rows[ITEM_LYRIC_LAYOUT].label = "双语歌词排版";
+    m_rows[ITEM_LYRIC_LAYOUT].value = config.GetLyricTwoColumn() ? "双栏（左原文 右译文）"
+                                                                 : "单栏（译文在下方）";
+    m_rows[ITEM_LYRIC_LAYOUT].actionable = true;
+
     m_rows[ITEM_MUSIC_DIR].label = "默认音乐目录";
     m_rows[ITEM_MUSIC_DIR].value = config.GetMusicDir();
     m_rows[ITEM_MUSIC_DIR].actionable = false;
@@ -130,6 +135,13 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
     case ITEM_TRANSLATION:
         config.SetShowTranslation(!config.GetShowTranslation());
         break;
+    case ITEM_LYRIC_LAYOUT:
+    {
+        bool two_column = !config.GetLyricTwoColumn();
+        config.SetLyricTwoColumn(two_column);
+        ctx.ShowToast(two_column ? "歌词改为双栏显示" : "歌词改为单栏显示");
+        break;
+    }
     case ITEM_UPDATE:
     {
         if (m_updater == nullptr)

@@ -447,6 +447,61 @@ void CPlayerScreen::DrawProgressBar(ScreenContext& ctx)
                CRenderer::ALIGN_RIGHT);
 }
 
+void CPlayerScreen::DrawLyricText(ScreenContext& ctx, const CLrcParser::Lyric& line,
+                                  int center_x, int y, int max_width, bool is_current,
+                                  int position)
+{
+    CRenderer& r = *ctx.renderer;
+    CRenderer::FontSize font = is_current ? CRenderer::FS_LYRIC_CURRENT : CRenderer::FS_LYRIC;
+
+    if (!is_current || line.split.empty())
+    {
+        Color color = is_current ? Theme::kLyricCurrent : Theme::kLyricOther;
+        r.DrawTextEllipsis(line.text, center_x, y, max_width, font, color,
+                           CRenderer::ALIGN_CENTER);
+        return;
+    }
+
+    // 逐字歌词：先画底色整行，再用当前进度裁出已唱的部分覆盖上去
+    int text_w = 0, text_h = 0;
+    r.MeasureText(line.text, font, text_w, text_h);
+    int text_x = center_x - text_w / 2;
+
+    r.DrawText(line.text, text_x, y, font, Theme::kLyricOther);
+
+    // 找出当前落在哪一段，算出该段内的比例
+    int elapsed = position - line.time_start;
+    size_t sung_bytes = 0;
+    int accumulated = 0;
+    double partial = 0.0;
+    for (size_t seg = 0; seg < line.word_time.size(); ++seg)
+    {
+        int seg_time = line.word_time[seg];
+        if (elapsed >= accumulated + seg_time)
+        {
+            accumulated += seg_time;
+            sung_bytes = line.split[seg];
+            continue;
+        }
+        if (seg_time > 0)
+            partial = static_cast<double>(elapsed - accumulated) / seg_time;
+        size_t seg_start = (seg == 0) ? 0 : line.split[seg - 1];
+        size_t seg_end = line.split[seg];
+        // 段内按比例插值出一个字节位置，再回退到 UTF-8 字符边界
+        size_t target = seg_start + static_cast<size_t>((seg_end - seg_start) * partial);
+        while (target > seg_start && target < line.text.size()
+               && (static_cast<unsigned char>(line.text[target]) & 0xC0) == 0x80)
+        {
+            --target;
+        }
+        sung_bytes = target;
+        break;
+    }
+
+    if (sung_bytes > 0)
+        r.DrawText(line.text.substr(0, sung_bytes), text_x, y, font, Theme::kLyricKaraoke);
+}
+
 void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, int height)
 {
     CRenderer& r = *ctx.renderer;
@@ -466,7 +521,27 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
     int position = player.GetPosition();
     int current = lyrics.GetLyricIndex(position);
 
-    const int line_height = 52;
+    // 双栏只在真的有译文时才启用，否则右边是一片空白，反而更难看
+    bool has_translation = false;
+    for (const CLrcParser::Lyric& line : lines)
+    {
+        if (!line.translate.empty())
+        {
+            has_translation = true;
+            break;
+        }
+    }
+    const bool two_column = player.GetConfig().GetLyricTwoColumn()
+                            && player.GetConfig().GetShowTranslation()
+                            && has_translation;
+
+    const int column_gap = 24;
+    const int column_width = (width - column_gap) / 2;
+    const int left_center = x + column_width / 2;
+    const int right_center = x + column_width + column_gap + column_width / 2;
+
+    // 双栏时译文不再占用下方的一行，行距可以收紧一些
+    const int line_height = two_column ? 46 : 52;
     const int center_y = y + height / 2 - line_height / 2;
     const int visible = height / line_height / 2 + 1;
 
@@ -484,65 +559,30 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
         int draw_y = center_y + offset * line_height + static_cast<int>(animation_offset);
         bool is_current = (offset == 0);
 
-        if (is_current && !line.split.empty())
+        if (two_column)
         {
-            // 逐字歌词：先画底色整行，再用当前进度裁出已唱部分
-            int text_w = 0, text_h = 0;
-            r.MeasureText(line.text, CRenderer::FS_LYRIC_CURRENT, text_w, text_h);
-            int text_x = x + width / 2 - text_w / 2;
-
-            r.DrawText(line.text, text_x, draw_y, CRenderer::FS_LYRIC_CURRENT, Theme::kLyricOther);
-
-            // 找出当前落在哪一段，算出该段内的比例
-            int elapsed = position - line.time_start;
-            size_t sung_bytes = 0;
-            int accumulated = 0;
-            double partial = 0.0;
-            for (size_t seg = 0; seg < line.word_time.size(); ++seg)
+            // 双栏：左原文右译文，同一行左右对齐，滚动天然同步——
+            // 两栏用的是同一个 index 和同一个 draw_y
+            DrawLyricText(ctx, line, left_center, draw_y, column_width, is_current, position);
+            if (!line.translate.empty())
             {
-                int seg_time = line.word_time[seg];
-                if (elapsed >= accumulated + seg_time)
-                {
-                    accumulated += seg_time;
-                    sung_bytes = line.split[seg];
-                    continue;
-                }
-                if (seg_time > 0)
-                    partial = static_cast<double>(elapsed - accumulated) / seg_time;
-                size_t seg_start = (seg == 0) ? 0 : line.split[seg - 1];
-                size_t seg_end = line.split[seg];
-                // 段内按比例插值出一个字节位置，再回退到 UTF-8 字符边界
-                size_t target = seg_start + static_cast<size_t>((seg_end - seg_start) * partial);
-                while (target > seg_start && target < line.text.size()
-                       && (static_cast<unsigned char>(line.text[target]) & 0xC0) == 0x80)
-                {
-                    --target;
-                }
-                sung_bytes = target;
-                break;
-            }
-
-            if (sung_bytes > 0)
-            {
-                std::string sung = line.text.substr(0, sung_bytes);
-                r.DrawText(sung, text_x, draw_y, CRenderer::FS_LYRIC_CURRENT, Theme::kLyricKaraoke);
+                r.DrawTextEllipsis(line.translate, right_center, draw_y, column_width,
+                                   is_current ? CRenderer::FS_LYRIC_CURRENT : CRenderer::FS_LYRIC,
+                                   is_current ? Theme::kLyricTranslate : Theme::kLyricOther,
+                                   CRenderer::ALIGN_CENTER);
             }
         }
         else
         {
-            Color color = is_current ? Theme::kLyricCurrent : Theme::kLyricOther;
-            CRenderer::FontSize font = is_current ? CRenderer::FS_LYRIC_CURRENT : CRenderer::FS_LYRIC;
-            r.DrawTextEllipsis(line.text, x + width / 2, draw_y, width, font, color,
-                               CRenderer::ALIGN_CENTER);
-        }
-
-        // 翻译画在本行下方
-        if (!line.translate.empty() && player.GetConfig().GetShowTranslation())
-        {
-            r.DrawTextEllipsis(line.translate, x + width / 2, draw_y + 40, width,
-                               CRenderer::FS_SMALL,
-                               is_current ? Theme::kLyricTranslate : Theme::kLyricOther,
-                               CRenderer::ALIGN_CENTER);
+            DrawLyricText(ctx, line, x + width / 2, draw_y, width, is_current, position);
+            // 翻译画在本行下方
+            if (!line.translate.empty() && player.GetConfig().GetShowTranslation())
+            {
+                r.DrawTextEllipsis(line.translate, x + width / 2, draw_y + 40, width,
+                                   CRenderer::FS_SMALL,
+                                   is_current ? Theme::kLyricTranslate : Theme::kLyricOther,
+                                   CRenderer::ALIGN_CENTER);
+            }
         }
     }
 

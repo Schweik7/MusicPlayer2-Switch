@@ -184,6 +184,40 @@ static void TestId3v2()
         CHECK_EQ(tag.title, u8"Côme");
     }
 
+
+    // ---- UTF-16 文本以拉丁字母结尾、且带空终止符 ----
+    // 真实文件（Bee Gees - Melody Fair.mp3）就是这种情况。
+    // 'r' 在 UTF-16LE 里是 72 00，如果按字节剥离尾部的空字符，
+    // 会把终止符连同 'r' 的高位零字节一起剥掉，最后一个字母就丢了。
+    // 合成用例如果只用中文（高字节非零）恰好绕开这个坑，所以必须专门测。
+    {
+        std::string payload = Utf8ToUtf16LeWithBom("Melody Fair");
+        payload += '\0';                    // UTF-16 的终止符是两个字节
+        payload += '\0';
+        std::string frames = MakeTextFrame("TIT2", 1, payload);
+
+        std::string artist = Utf8ToUtf16LeWithBom("Bee Gees");
+        artist += '\0';
+        artist += '\0';
+        frames += MakeTextFrame("TPE1", 1, artist);
+
+        AudioTag::Tag tag;
+        CHECK(AudioTag::ParseId3v2(MakeId3v2_3(frames), tag));
+        CHECK_EQ(tag.title, "Melody Fair");
+        CHECK_EQ(tag.artist, "Bee Gees");
+    }
+
+    // ---- 单字节编码的尾部填充仍然要剥掉 ----
+    {
+        std::string payload = "Title";
+        payload += '\0';
+        payload += '\0';
+        payload += '\0';
+        AudioTag::Tag tag;
+        CHECK(AudioTag::ParseId3v2(MakeId3v2_3(MakeTextFrame("TIT2", 3, payload)), tag));
+        CHECK_EQ(tag.title, "Title");
+    }
+
     // ---- v2.4：帧长度是同步安全整数，用 v2.3 的读法会读错 ----
     {
         std::string body;
@@ -419,10 +453,175 @@ static void TestReadFromDisk()
     TestFramework::RemoveTestDir(dir);
 }
 
+static void TestEmbeddedCover()
+{
+    std::puts("AudioTag / 内嵌封面");
+
+    // 假的图片数据：只是带个像样的文件头。解析器并不解码图片，
+    // 它的职责就是把这段字节原样切出来。
+    std::string jpeg_bytes;
+    jpeg_bytes += static_cast<char>(0xFF);
+    jpeg_bytes += static_cast<char>(0xD8);
+    jpeg_bytes += static_cast<char>(0xFF);
+    jpeg_bytes += static_cast<char>(0xE0);
+    jpeg_bytes += std::string(500, 'J');
+    std::string png_bytes;
+    png_bytes += static_cast<char>(0x89);
+    png_bytes += "PNG";
+    png_bytes += std::string(300, 'P');
+
+    // ---- FLAC PICTURE 块 ----
+    {
+        auto make_picture_block = [&](uint32_t pic_type, const std::string& mime,
+                                      const std::string& payload) {
+            std::string b;
+            AppendBE32(b, pic_type);
+            AppendBE32(b, static_cast<uint32_t>(mime.size()));
+            b += mime;
+            AppendBE32(b, 4);           // 描述长度
+            b += "desc";
+            AppendBE32(b, 800);         // 宽
+            AppendBE32(b, 800);         // 高
+            AppendBE32(b, 24);          // 色深
+            AppendBE32(b, 0);           // 颜色数
+            AppendBE32(b, static_cast<uint32_t>(payload.size()));
+            b += payload;
+            return b;
+        };
+
+        std::string flac = "fLaC";
+        auto append_block = [&](int type, const std::string& payload, bool last) {
+            flac += static_cast<char>((last ? 0x80 : 0x00) | type);
+            uint32_t len = static_cast<uint32_t>(payload.size());
+            flac += static_cast<char>((len >> 16) & 0xFF);
+            flac += static_cast<char>((len >> 8) & 0xFF);
+            flac += static_cast<char>(len & 0xFF);
+            flac += payload;
+        };
+        append_block(0, std::string(34, '\0'), false);                      // STREAMINFO
+        append_block(6, make_picture_block(2, "image/png", png_bytes), false);   // 封底
+        append_block(6, make_picture_block(3, "image/jpeg", jpeg_bytes), true);  // 正面封面
+
+        AudioTag::Picture pic;
+        CHECK(AudioTag::ExtractFlacPicture(flac, pic));
+        // 有多张图时必须挑"正面封面"（类型 3），不能取第一张
+        CHECK_EQ_INT(pic.type, 3);
+        CHECK_EQ(pic.mime, "image/jpeg");
+        CHECK_EQ_INT(static_cast<long long>(pic.data.size()),
+                     static_cast<long long>(jpeg_bytes.size()));
+        CHECK(pic.data == jpeg_bytes);
+    }
+
+    // ---- 只有一张非正面封面时也要取到 ----
+    {
+        std::string flac = "fLaC";
+        std::string b;
+        AppendBE32(b, 2);
+        AppendBE32(b, 9);
+        b += "image/png";
+        AppendBE32(b, 0);
+        AppendBE32(b, 1); AppendBE32(b, 1); AppendBE32(b, 24); AppendBE32(b, 0);
+        AppendBE32(b, static_cast<uint32_t>(png_bytes.size()));
+        b += png_bytes;
+
+        flac += static_cast<char>(0x80 | 6);
+        uint32_t len = static_cast<uint32_t>(b.size());
+        flac += static_cast<char>((len >> 16) & 0xFF);
+        flac += static_cast<char>((len >> 8) & 0xFF);
+        flac += static_cast<char>(len & 0xFF);
+        flac += b;
+
+        AudioTag::Picture pic;
+        CHECK(AudioTag::ExtractFlacPicture(flac, pic));
+        CHECK_EQ_INT(pic.type, 2);
+        CHECK(pic.data == png_bytes);
+    }
+
+    // ---- ID3v2.3 的 APIC 帧 ----
+    {
+        std::string body;
+        body += static_cast<char>(0);        // 编码：Latin-1
+        body += "image/jpeg";
+        body += '\0';
+        body += static_cast<char>(3);        // 正面封面
+        body += "cover";                     // 描述
+        body += '\0';
+        body += jpeg_bytes;
+
+        std::string frame = "APIC";
+        AppendBE32(frame, static_cast<uint32_t>(body.size()));
+        frame += '\0';
+        frame += '\0';
+        frame += body;
+
+        // 前面放一个文本帧，确认能正确跳过
+        std::string frames = MakeTextFrame("TIT2", 3, u8"测试") + frame;
+
+        AudioTag::Picture pic;
+        CHECK(AudioTag::ExtractId3Picture(MakeId3v2_3(frames), pic));
+        CHECK_EQ_INT(pic.type, 3);
+        CHECK_EQ(pic.mime, "image/jpeg");
+        CHECK(pic.data == jpeg_bytes);
+    }
+
+    // ---- APIC 的描述用 UTF-16 编码：终止符是两个字节的 0，
+    //      按单字节找终止符会把图片数据的开头当成描述的一部分 ----
+    {
+        std::string body;
+        body += static_cast<char>(1);        // 编码：UTF-16 带 BOM
+        body += "image/jpeg";
+        body += '\0';
+        body += static_cast<char>(3);
+        body += Utf8ToUtf16LeWithBom(u8"封面");
+        body += '\0';
+        body += '\0';
+        body += jpeg_bytes;
+
+        std::string frame = "APIC";
+        AppendBE32(frame, static_cast<uint32_t>(body.size()));
+        frame += '\0';
+        frame += '\0';
+        frame += body;
+
+        AudioTag::Picture pic;
+        CHECK(AudioTag::ExtractId3Picture(MakeId3v2_3(frame), pic));
+        CHECK(pic.data == jpeg_bytes);
+    }
+
+    // ---- 损坏输入 ----
+    {
+        AudioTag::Picture pic;
+        CHECK(!AudioTag::ExtractFlacPicture("", pic));
+        CHECK(!AudioTag::ExtractFlacPicture("fLaC", pic));
+        CHECK(!AudioTag::ExtractId3Picture("", pic));
+        CHECK(!AudioTag::ExtractId3Picture("NotAnId3Tag", pic));
+        // 没有封面的正常标签
+        CHECK(!AudioTag::ExtractId3Picture(MakeId3v2_3(MakeTextFrame("TIT2", 3, "x")), pic));
+        // PICTURE 块声称的图片长度超出实际数据
+        std::string flac = "fLaC";
+        std::string b;
+        AppendBE32(b, 3);
+        AppendBE32(b, 9);
+        b += "image/png";
+        AppendBE32(b, 0);
+        AppendBE32(b, 1); AppendBE32(b, 1); AppendBE32(b, 24); AppendBE32(b, 0);
+        AppendBE32(b, 0xFFFFFF);
+        b += "tiny";
+        flac += static_cast<char>(0x80 | 6);
+        uint32_t len = static_cast<uint32_t>(b.size());
+        flac += static_cast<char>((len >> 16) & 0xFF);
+        flac += static_cast<char>((len >> 8) & 0xFF);
+        flac += static_cast<char>(len & 0xFF);
+        flac += b;
+        CHECK(!AudioTag::ExtractFlacPicture(flac, pic));
+    }
+}
+
 void RunTagTests()
 {
     TestId3v2();
     TestId3v1();
     TestFlacAndOgg();
     TestReadFromDisk();
+    TestEmbeddedCover();
 }

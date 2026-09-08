@@ -26,6 +26,7 @@ private:
         ITEM_TOUCH = 0,
         ITEM_DIM,
         ITEM_TRANSLATION,
+        ITEM_LYRIC_LAYOUT,
         ITEM_MUSIC_DIR,
         ITEM_NETWORK,
         ITEM_UPDATE,

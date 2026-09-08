@@ -130,9 +130,17 @@ namespace
 
         unsigned char encoding = static_cast<unsigned char>(raw[0]);
         std::string body = raw.substr(1);
-        // 去掉尾部填充的空字符
-        while (!body.empty() && body.back() == '\0')
-            body.pop_back();
+
+        // 只有单字节编码才能按字节剥离尾部的空字符。
+        // UTF-16 下这么做是错的：以拉丁字母结尾时（如 "Melody Fair" 的 'r' = 72 00），
+        // 剥完终止符会继续把这个字符的高位零字节也剥掉，最后一个字变成半个然后被丢弃。
+        // UTF-16 的终止符交给下面的转换函数处理——它遇到值为 0 的码元就停。
+        const bool single_byte = (encoding == 0 || encoding == 3);
+        if (single_byte)
+        {
+            while (!body.empty() && body.back() == '\0')
+                body.pop_back();
+        }
 
         std::string text;
         switch (encoding)
@@ -365,6 +373,205 @@ bool ParseOgg(const std::string& data, Tag& out)
     if (pos != std::string::npos)
         return ParseVorbisComment(data, pos + 8, out);
 
+    return false;
+}
+
+bool ExtractFlacPicture(const std::string& data, Picture& out)
+{
+    if (data.size() < 4 || data.compare(0, 4, "fLaC") != 0)
+        return false;
+
+    bool found = false;
+    size_t pos = 4;
+    while (pos + 4 <= data.size())
+    {
+        unsigned char header = static_cast<unsigned char>(data[pos]);
+        bool last = (header & 0x80) != 0;
+        int type = header & 0x7F;
+        uint32_t length = ReadBE24(data, pos + 1);
+        size_t body = pos + 4;
+
+        if (type == 6 && body + 32 <= data.size() && body + length <= data.size())
+        {
+            // PICTURE 块的字段依次是：类型、MIME 长度+串、描述长度+串、
+            // 宽高色深颜色数（4 个 u32）、图片长度+数据
+            size_t p = body;
+            uint32_t pic_type = ReadBE32(data, p);              p += 4;
+            uint32_t mime_len = ReadBE32(data, p);              p += 4;
+            if (p + mime_len + 4 > data.size())
+                break;
+            std::string mime = data.substr(p, mime_len);        p += mime_len;
+            uint32_t desc_len = ReadBE32(data, p);              p += 4;
+            if (p + desc_len + 20 > data.size())
+                break;
+            p += desc_len + 16;                                 // 跳过宽/高/色深/颜色数
+            uint32_t data_len = ReadBE32(data, p);              p += 4;
+            if (p + data_len > data.size())
+                break;
+
+            // 优先正面封面；先记下第一张，遇到正面封面就替换并停止
+            if (!found || pic_type == 3)
+            {
+                out.mime = mime;
+                out.type = static_cast<int>(pic_type);
+                out.data = data.substr(p, data_len);
+                found = true;
+            }
+            if (pic_type == 3)
+                return true;
+        }
+
+        if (last)
+            break;
+        pos = body + length;
+    }
+    return found;
+}
+
+bool ExtractId3Picture(const std::string& data, Picture& out)
+{
+    if (data.size() < 10 || data.compare(0, 3, "ID3") != 0)
+        return false;
+
+    int major = static_cast<unsigned char>(data[3]);
+    if (major < 2 || major > 4)
+        return false;
+    unsigned char flags = static_cast<unsigned char>(data[5]);
+    uint32_t tag_size = ReadSyncSafe(data, 6);
+
+    size_t pos = 10;
+    if (major >= 3 && (flags & 0x40) != 0 && pos + 4 <= data.size())
+    {
+        uint32_t ext_size = (major == 4) ? ReadSyncSafe(data, pos) : ReadBE32(data, pos);
+        pos += (major == 4) ? ext_size : ext_size + 4;
+    }
+
+    size_t tag_end = 10 + tag_size;
+    if (tag_end > data.size())
+        tag_end = data.size();
+
+    const size_t id_len = (major == 2) ? 3 : 4;
+    const size_t header_len = (major == 2) ? 6 : 10;
+
+    bool found = false;
+    while (pos + header_len <= tag_end)
+    {
+        std::string id = data.substr(pos, id_len);
+        if (id[0] == '\0')
+            break;
+
+        uint32_t frame_size;
+        if (major == 2)
+            frame_size = ReadBE24(data, pos + 3);
+        else if (major == 4)
+            frame_size = ReadSyncSafe(data, pos + 4);
+        else
+            frame_size = ReadBE32(data, pos + 4);
+
+        pos += header_len;
+        if (frame_size == 0 || pos + frame_size > tag_end)
+            break;
+
+        if (id == "APIC" || id == "PIC")
+        {
+            const std::string body = data.substr(pos, frame_size);
+            size_t p = 0;
+            if (p < body.size())
+            {
+                unsigned char encoding = static_cast<unsigned char>(body[p]);
+                ++p;
+
+                std::string mime;
+                if (id == "PIC")
+                {
+                    // v2.2 用固定 3 字节的格式标识（"JPG"/"PNG"）而不是 MIME 串
+                    if (p + 3 > body.size())
+                        break;
+                    std::string format = body.substr(p, 3);
+                    p += 3;
+                    mime = (format == "PNG") ? "image/png" : "image/jpeg";
+                }
+                else
+                {
+                    size_t nul = body.find('\0', p);
+                    if (nul == std::string::npos)
+                        break;
+                    mime = body.substr(p, nul - p);
+                    p = nul + 1;
+                }
+
+                if (p < body.size())
+                {
+                    int pic_type = static_cast<unsigned char>(body[p]);
+                    ++p;
+
+                    // 描述串的终止符宽度取决于编码：UTF-16 是两个字节的 0
+                    bool wide = (encoding == 1 || encoding == 2);
+                    size_t desc_end = std::string::npos;
+                    if (wide)
+                    {
+                        for (size_t i = p; i + 1 < body.size(); i += 2)
+                        {
+                            if (body[i] == '\0' && body[i + 1] == '\0')
+                            {
+                                desc_end = i + 2;
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        size_t nul = body.find('\0', p);
+                        if (nul != std::string::npos)
+                            desc_end = nul + 1;
+                    }
+
+                    if (desc_end != std::string::npos && desc_end < body.size())
+                    {
+                        if (!found || pic_type == 3)
+                        {
+                            out.mime = mime;
+                            out.type = pic_type;
+                            out.data = body.substr(desc_end);
+                            found = true;
+                        }
+                        if (pic_type == 3)
+                            return true;
+                    }
+                }
+            }
+        }
+        pos += frame_size;
+    }
+    return found;
+}
+
+namespace
+{
+    // 封面只在显示当前曲目时读，可以读得比标签大方一些
+    const size_t kMaxCoverScanBytes = 4 * 1024 * 1024;
+}
+
+bool ReadCover(const std::string& file_path, Picture& out)
+{
+    out = Picture();
+
+    std::string ext = FileUtil::GetExtension(file_path);
+    std::string data;
+    if (ext == "flac")
+    {
+        if (!FileUtil::ReadHead(file_path, kMaxCoverScanBytes, data))
+            return false;
+        return ExtractFlacPicture(data, out);
+    }
+    if (ext == "mp3")
+    {
+        if (!FileUtil::ReadHead(file_path, kMaxCoverScanBytes, data))
+            return false;
+        return ExtractId3Picture(data, out);
+    }
+    // Ogg/Opus 的封面存在 METADATA_BLOCK_PICTURE 注释里（base64 编码），
+    // 暂不支持——先看实际有没有这个需求再说
     return false;
 }
 

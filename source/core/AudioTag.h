@@ -27,8 +27,20 @@ namespace AudioTag
         }
     };
 
+    // 内嵌封面
+    struct Picture
+    {
+        std::string mime;       // "image/jpeg" 等
+        std::string data;       // 原始图片字节，直接交给 SDL_image 解码
+        int type{};             // ID3/FLAC 的图片类型，3 表示正面封面
+    };
+
     // 从文件读取。识别不了或没有标签时返回 false，out 保持为空。
     bool Read(const std::string& file_path, Tag& out);
+
+    // 读取内嵌封面。优先取"正面封面"（类型 3），没有就取第一张。
+    // 只在需要显示当前曲目时调用——封面动辄几百 KB，不适合扫描时逐个读。
+    bool ReadCover(const std::string& file_path, Picture& out);
 
     // ---- 分格式解析器 ----
     // 单独暴露出来是为了能用内存里的样本做单元测试：
@@ -45,4 +57,9 @@ namespace AudioTag
 
     // 解析一段裸的 Vorbis comment 结构（FLAC 与 Ogg 共用同一种格式）
     bool ParseVorbisComment(const std::string& data, size_t offset, Tag& out);
+
+    // FLAC 的 PICTURE 元数据块
+    bool ExtractFlacPicture(const std::string& data, Picture& out);
+    // ID3v2 的 APIC 帧（v2.2 里叫 PIC）
+    bool ExtractId3Picture(const std::string& data, Picture& out);
 }

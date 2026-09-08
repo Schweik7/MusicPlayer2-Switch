@@ -1,4 +1,6 @@
 #include "Renderer.h"
+#include "../Diagnostics.h"
+#include "../core/AudioTag.h"
 #include "../core/FileUtil.h"
 #include "../core/StringUtil.h"
 
@@ -484,8 +486,46 @@ int CRenderer::GetLineHeight(FontSize size) const
     return TTF_FontHeight(chain.fonts.front());
 }
 
+SDL_Texture* CRenderer::TextureFromSurface(SDL_Surface* surface)
+{
+    if (surface == nullptr)
+        return nullptr;
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+    SDL_FreeSurface(surface);
+    return texture;
+}
+
 SDL_Texture* CRenderer::LoadCoverImage(const std::string& audio_file_path)
 {
+    // ---- 先试文件内嵌的封面 ----
+    //
+    // 这条路比找旁边的图片文件可靠：图片一定跟这首歌对得上，也不依赖
+    // 下载工具有没有把封面单独导出来。Switch 上文件名只能是 ASCII，
+    // 靠文件名配对本来就容易出岔子。
+    AudioTag::Picture picture;
+    if (AudioTag::ReadCover(audio_file_path, picture) && !picture.data.empty())
+    {
+        SDL_RWops* rw = SDL_RWFromConstMem(picture.data.data(),
+                                           static_cast<int>(picture.data.size()));
+        if (rw != nullptr)
+        {
+            // freesrc = 1：由 SDL 负责释放 RWops，图片字节仍归 picture 所有
+            SDL_Surface* surface = IMG_Load_RW(rw, 1);
+            if (surface != nullptr)
+            {
+                SDL_Texture* texture = TextureFromSurface(surface);
+                if (texture != nullptr)
+                    return texture;
+            }
+            else
+            {
+                Diag::Logf("内嵌封面解码失败 (%s, %u 字节): %s", picture.mime.c_str(),
+                           static_cast<unsigned>(picture.data.size()), IMG_GetError());
+            }
+        }
+    }
+
+    // ---- 退回目录里的图片文件 ----
     std::string dir = FileUtil::GetDir(audio_file_path);
     if (dir.empty())
         return nullptr;
@@ -508,12 +548,18 @@ SDL_Texture* CRenderer::LoadCoverImage(const std::string& audio_file_path)
             continue;
         SDL_Surface* surface = IMG_Load(path.c_str());
         if (surface == nullptr)
+        {
+            // 记下来：文件明明在，却解码失败，这种情况必须能查
+            Diag::Logf("封面文件解码失败 %s: %s", path.c_str(), IMG_GetError());
             continue;
-        SDL_Texture* texture = SDL_CreateTextureFromSurface(m_renderer, surface);
-        SDL_FreeSurface(surface);
+        }
+        SDL_Texture* texture = TextureFromSurface(surface);
         if (texture != nullptr)
             return texture;
+        Diag::Logf("封面纹理创建失败 %s: %s", path.c_str(), SDL_GetError());
     }
+
+    Diag::Logf("没有找到可用封面: %s", audio_file_path.c_str());
     return nullptr;
 }
 

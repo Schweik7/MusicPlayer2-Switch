@@ -1,5 +1,7 @@
 #pragma once
 #include "Screen.h"
+#include "../core/LrcParser.h"
+
 #include <string>
 
 struct SDL_Texture;
@@ -45,6 +47,10 @@ private:
     void DrawProgressBar(ScreenContext& ctx);
     void DrawTransportButtons(ScreenContext& ctx);
     void DrawLyricView(ScreenContext& ctx, int x, int y, int width, int height);
+    // 画一行原文（当前行且有分词信息时带逐字高亮）。
+    // 抽出来是因为单栏和双栏都要用，只是给的横向范围不同。
+    void DrawLyricText(ScreenContext& ctx, const CLrcParser::Lyric& line, int center_x, int y,
+                       int max_width, bool is_current, int position);
     void DrawSpectrumView(ScreenContext& ctx, int x, int y, int width, int height);
     void DrawVolumeOverlay(ScreenContext& ctx);
 

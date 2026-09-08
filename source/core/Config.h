@@ -50,6 +50,11 @@ public:
     bool GetShowTranslation() const { return GetBool("show_translation", true); }
     void SetShowTranslation(bool b) { SetBool("show_translation", b); }
 
+    // 双语歌词的排版：false 为单栏（译文排在原文下方），
+    // true 为双栏（左原文右译文，同一行左右对齐）
+    bool GetLyricTwoColumn() const { return GetBool("lyric_two_column", false); }
+    void SetLyricTwoColumn(bool b) { SetBool("lyric_two_column", b); }
+
     bool GetShowSpectrum() const { return GetBool("show_spectrum", true); }
     void SetShowSpectrum(bool b) { SetBool("show_spectrum", b); }
 

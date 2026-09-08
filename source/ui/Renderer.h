@@ -70,7 +70,8 @@ public:
     int  GetLineHeight(FontSize size) const;
 
     // ---- 图片 ----
-    // 加载专辑封面（歌曲同目录下的 cover/folder/front.jpg|png）。找不到返回 nullptr。
+    // 加载专辑封面。优先用文件内嵌的封面，其次找同名图片、
+    // 再其次找目录里的 cover/folder/front.jpg|png。找不到返回 nullptr。
     SDL_Texture* LoadCoverImage(const std::string& audio_file_path);
     void DrawTexture(SDL_Texture* texture, int x, int y, int w, int h);
     void FreeTexture(SDL_Texture* texture);
@@ -104,6 +105,8 @@ private:
     };
 
     bool LoadFonts();
+    // 从 surface 建纹理并释放 surface；surface 为空时返回 nullptr
+    SDL_Texture* TextureFromSurface(struct SDL_Surface* surface);
     // 把 UTF-8 串按“哪个字体能画出这个字”切成若干段
     void SplitRuns(const std::string& utf8, FontSize size, std::vector<TextRun>& runs) const;
     TTF_Font* PickFont(FontSize size, char32_t code_point) const;
