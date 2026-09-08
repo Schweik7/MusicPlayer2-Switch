@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -33,11 +35,26 @@ namespace FileUtil
     // 整文件读进来会让扫描一个音乐库变成读几百 MB。
     bool ReadHead(const std::string& path, size_t max_bytes, std::string& content);
     bool ReadTail(const std::string& path, size_t bytes, std::string& content);
+    // 从指定偏移读一段。文件不足时读到多少算多少，一个字节都读不到才算失败。
+    bool ReadRange(const std::string& path, uint64_t offset, size_t bytes, std::string& content);
+    // 文件字节数，不存在或读不到时返回 0
+    uint64_t GetFileSize(const std::string& path);
     bool WriteAll(const std::string& path, const std::string& content);
     bool CreateDirRecursive(const std::string& dir);
     // 按字节复制。用于 rename 不可用时的退路（Switch 的 FS 层对改名的支持
     // 并不总是可靠），代价是多一遍读写。
     bool CopyFileTo(const std::string& src, const std::string& dst);
+    // 用 src 顶替 dst（dst 已存在时先删掉），成功后 src 不再存在。
+    // 不叫 ReplaceFile：Windows 的 <windows.h> 把这个名字定义成了宏，
+    // 主机测试里会被悄悄改写成 ReplaceFileW，链接时才报符号找不到。
+    //
+    // 先试 rename，失败就退回"复制 + 删源"。Switch 上 rename 会莫名其妙地失败——
+    // 自动更新曾因此报"无法备份当前版本"。凡是"写临时文件再换上去"的地方都该走这里，
+    // 免得每处各写一遍这个退路。
+    bool MoveOverwrite(const std::string& src, const std::string& dst);
+    // 打开文件。存在的意义是隔离 Windows 上的宽字符路径差异——
+    // 主机测试跑在中文路径下时，直接 fopen 会打不开。
+    FILE* OpenFile(const std::string& path, const char* mode);
 
     // 把写入提交到存储设备。
     //

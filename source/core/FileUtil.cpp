@@ -228,7 +228,7 @@ bool IsDirectory(const std::string& path)
 }
 
 // 打开文件的统一入口，隔离掉 Windows 的宽字符差异
-static FILE* OpenFile(const std::string& path, const char* mode)
+FILE* OpenFile(const std::string& path, const char* mode)
 {
 #ifdef _WIN32
     std::wstring wide_mode(mode, mode + std::char_traits<char>::length(mode));
@@ -236,6 +236,21 @@ static FILE* OpenFile(const std::string& path, const char* mode)
 #else
     return std::fopen(path.c_str(), mode);
 #endif
+}
+
+bool MoveOverwrite(const std::string& src, const std::string& dst)
+{
+    std::remove(dst.c_str());
+    if (std::rename(src.c_str(), dst.c_str()) == 0)
+    {
+        CommitDevice(dst);
+        return true;
+    }
+    if (!CopyFileTo(src, dst))
+        return false;
+    std::remove(src.c_str());
+    CommitDevice(dst);
+    return true;
 }
 
 bool CopyFileTo(const std::string& src, const std::string& dst)
@@ -287,6 +302,42 @@ bool ReadHead(const std::string& path, size_t max_bytes, std::string& content)
     std::fclose(fp);
     content.resize(ok ? got : 0);
     return ok && got > 0;
+}
+
+bool ReadRange(const std::string& path, uint64_t offset, size_t bytes, std::string& content)
+{
+    content.clear();
+    if (bytes == 0)
+        return false;
+    FILE* fp = OpenFile(path, "rb");
+    if (fp == nullptr)
+        return false;
+
+    size_t got = 0;
+    if (std::fseek(fp, static_cast<long>(offset), SEEK_SET) == 0)
+    {
+        content.resize(bytes);
+        got = std::fread(&content[0], 1, bytes, fp);
+        content.resize(got);
+    }
+    std::fclose(fp);
+    return got > 0;
+}
+
+uint64_t GetFileSize(const std::string& path)
+{
+    FILE* fp = OpenFile(path, "rb");
+    if (fp == nullptr)
+        return 0;
+    uint64_t size = 0;
+    if (std::fseek(fp, 0, SEEK_END) == 0)
+    {
+        long value = std::ftell(fp);
+        if (value > 0)
+            size = static_cast<uint64_t>(value);
+    }
+    std::fclose(fp);
+    return size;
 }
 
 bool ReadTail(const std::string& path, size_t bytes, std::string& content)

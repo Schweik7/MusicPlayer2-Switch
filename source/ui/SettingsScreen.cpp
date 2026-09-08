@@ -4,6 +4,7 @@
 #include "../Version.h"
 #include "../input/InputMap.h"
 #include "../net/Updater.h"
+#include "../App.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -14,6 +15,38 @@ namespace
     const int kListX = Theme::kPadding * 2;
     const int kListY = Theme::kHeaderHeight + Theme::kPadding;
     const int kListW = Theme::kScreenWidth - kListX * 2;
+
+    // 两栏排布。
+    //
+    // 原来是一列铺到底：九行 × 64 像素从 96 排到 672，而底栏从 656 开始——
+    // 画在列表下方的更新状态和下载进度条整个落到屏幕外面，永远看不见。
+    // 屏幕本来就宽（1280），一行只放一个"标签 + 值"也浪费，改成两栏正好
+    // 把高度砍掉一半，下面空出两百多像素给状态信息。
+    const int kColumnGap = 32;
+    const int kColumnW = (kListW - kColumnGap) / 2;
+
+    // 每栏放几行：按项数平分成两栏，而不是写死一个数。
+    // 写死的话每加一个设置项都得回来改，忘了就会多出第三栏跑到屏幕外面去。
+    int RowsPerColumn(int count)
+    {
+        return (count + 1) / 2;
+    }
+
+    // 第 index 项所在的格子
+    Rect RowRect(int index, int count)
+    {
+        const int per_column = RowsPerColumn(count);
+        const int column = index / per_column;
+        const int row = index % per_column;
+        return Rect{ kListX + column * (kColumnW + kColumnGap), kListY + row * kRowHeight,
+                     kColumnW, kRowHeight };
+    }
+
+    // 状态信息区的顶端：跟在较长那一栏的下面
+    int StatusTop(int count)
+    {
+        return kListY + RowsPerColumn(count) * kRowHeight + 16;
+    }
 
     // 自动变暗的可选档位（秒）。0 表示关闭
     const int kDimOptions[] = { 0, 30, 60, 120, 300 };
@@ -52,7 +85,7 @@ const char* CSettingsScreen::GetButtonHints() const
 {
     if (m_show_about)
         return "B 返回设置";
-    return "A 修改/执行   B 返回   方向键 移动";
+    return "A 修改/执行|B 返回|方向键 移动|左右 切换栏";
 }
 
 void CSettingsScreen::BuildRows(ScreenContext& ctx)
@@ -78,6 +111,14 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_LYRIC_LAYOUT].value = config.GetLyricTwoColumn() ? "双栏（左原文 右译文）"
                                                                  : "单栏（译文在下方）";
     m_rows[ITEM_LYRIC_LAYOUT].actionable = true;
+
+    m_rows[ITEM_LYRIC_SYNC].label = "拖歌词跟随进度";
+    m_rows[ITEM_LYRIC_SYNC].value = config.GetLyricSeekSync() ? "开启" : "关闭（仅翻看）";
+    m_rows[ITEM_LYRIC_SYNC].actionable = true;
+
+    m_rows[ITEM_EMBED].label = "下载后写入歌曲文件";
+    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? "开启" : "关闭（只存旁边）";
+    m_rows[ITEM_EMBED].actionable = true;
 
     m_rows[ITEM_BROWSE].label = "浏览 SD 卡";
     m_rows[ITEM_BROWSE].value = "选择要播放的目录";
@@ -146,6 +187,22 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         ctx.ShowToast(two_column ? "歌词改为双栏显示" : "歌词改为单栏显示");
         break;
     }
+    case ITEM_LYRIC_SYNC:
+    {
+        const bool sync = !config.GetLyricSeekSync();
+        config.SetLyricSeekSync(sync);
+        ctx.ShowToast(sync ? "拖动歌词将同时改变播放进度"
+                           : "拖动歌词只是翻看，松手后自动归位");
+        break;
+    }
+    case ITEM_EMBED:
+    {
+        const bool embed = !config.GetEmbedDownloads();
+        config.SetEmbedDownloads(embed);
+        ctx.ShowToast(embed ? "下载的歌词封面将写进 MP3 / FLAC 文件"
+                            : "下载的歌词封面只保存在歌曲旁边");
+        break;
+    }
     case ITEM_UPDATE:
     {
         if (m_updater == nullptr)
@@ -201,25 +258,37 @@ void CSettingsScreen::Update(ScreenContext& ctx, double delta_seconds)
     BuildRows(ctx);
 
     const int count = static_cast<int>(m_rows.size());
+
+    // 上下在本栏内循环，左右换栏。这样光标的移动和眼睛看到的排布是一致的，
+    // 一路按"下"从左栏底部窜到右栏顶部反而会让人跟丢。
+    const int per_column = RowsPerColumn(count);
+    const int column_top = (m_selected / per_column) * per_column;
+    const int column_size = std::min(per_column, count - column_top);
+
     if (input.IsRepeat(CInputMap::BTN_DOWN))
-        m_selected = (m_selected + 1) % count;
+        m_selected = column_top + (m_selected - column_top + 1) % column_size;
     if (input.IsRepeat(CInputMap::BTN_UP))
-        m_selected = (m_selected - 1 + count) % count;
+        m_selected = column_top + (m_selected - column_top - 1 + column_size) % column_size;
+    if (input.IsRepeat(CInputMap::BTN_RIGHT) && m_selected + per_column < count)
+        m_selected += per_column;
+    if (input.IsRepeat(CInputMap::BTN_LEFT) && m_selected - per_column >= 0)
+        m_selected -= per_column;
 
     if (input.IsDown(CInputMap::BTN_A) && m_rows[m_selected].actionable)
         Activate(ctx, m_selected);
 
-    // 触摸：点某一行
+    // 触摸：点某一格
     const CInputMap::TouchState& touch = input.GetTouch();
-    if (touch.released && !touch.IsDrag()
-        && touch.y >= kListY && touch.y < kListY + count * kRowHeight)
+    if (touch.released && !touch.IsDrag())
     {
-        int row = (touch.y - kListY) / kRowHeight;
-        if (row >= 0 && row < count)
+        for (int i = 0; i < count; ++i)
         {
-            m_selected = row;
-            if (m_rows[row].actionable)
-                Activate(ctx, row);
+            if (!RowRect(i, count).Contains(touch.x, touch.y))
+                continue;
+            m_selected = i;
+            if (m_rows[i].actionable)
+                Activate(ctx, i);
+            break;
         }
     }
 }
@@ -285,6 +354,29 @@ void CSettingsScreen::DrawAbout(ScreenContext& ctx)
         y += 42;
     }
 
+    // 启动耗时。"启动要十秒"这种事光靠猜没用，把每一段的耗时摆出来才好定位。
+    if (m_app != nullptr && !m_app->GetBootTimings().empty())
+    {
+        y += 12;
+        r.DrawText("启动耗时", kListX, y, CRenderer::FS_NORMAL, Theme::kTextDim);
+        int bx = kListX + 180;
+        for (const CApp::BootStageTime& stage : m_app->GetBootTimings())
+        {
+            char text[64];
+            std::snprintf(text, sizeof(text), "%s %u ms", stage.name, stage.ms);
+            int w = 0, h = 0;
+            r.MeasureText(text, CRenderer::FS_SMALL, w, h);
+            if (bx + w > kListX + kListW)        // 一行放不下就换行
+            {
+                bx = kListX + 180;
+                y += 28;
+            }
+            r.DrawText(text, bx, y + 4, CRenderer::FS_SMALL, Theme::kText);
+            bx += w + 24;
+        }
+        y += 42;
+    }
+
     y += 20;
     r.DrawText("本移植版重写了界面与音频层：桌面版基于 MFC，无法交叉编译到 Switch。",
                kListX, y, CRenderer::FS_SMALL, Theme::kTextDisabled);
@@ -306,23 +398,23 @@ void CSettingsScreen::Draw(ScreenContext& ctx)
     for (size_t i = 0; i < m_rows.size(); ++i)
     {
         const Row& row = m_rows[i];
-        int y = kListY + static_cast<int>(i) * kRowHeight;
-        bool selected = (static_cast<int>(i) == m_selected);
+        const Rect cell = RowRect(static_cast<int>(i), static_cast<int>(m_rows.size()));
+        const bool selected = (static_cast<int>(i) == m_selected);
 
         if (selected)
-            r.FillRoundRect(kListX, y + 2, kListW, kRowHeight - 4, 6, Theme::kSelection);
+            r.FillRoundRect(cell.x, cell.y + 2, cell.w, cell.h - 4, 6, Theme::kSelection);
 
         Color label_color = row.actionable ? Theme::kText : Theme::kTextDim;
-        r.DrawText(row.label, kListX + 16, y + 18, CRenderer::FS_NORMAL, label_color);
+        r.DrawText(row.label, cell.x + 16, cell.y + 18, CRenderer::FS_NORMAL, label_color);
 
         if (!row.value.empty())
         {
-            r.DrawTextEllipsis(row.value, kListX + kListW - 16, y + 20, kListW / 2,
+            // 值靠右，最多占一半格宽，剩下的留给标签
+            r.DrawTextEllipsis(row.value, cell.x + cell.w - 16, cell.y + 20, cell.w / 2,
                                CRenderer::FS_SMALL, Theme::kTextDim, CRenderer::ALIGN_RIGHT);
         }
     }
 
-    // 更新状态显示在列表下方，留出进度条的空间
-    DrawUpdateStatus(ctx, kListX + 16, kListY + static_cast<int>(m_rows.size()) * kRowHeight + 16,
-                     kListW - 32);
+    // 更新状态显示在列表下方。两栏之后这里终于有地方了。
+    DrawUpdateStatus(ctx, kListX + 16, StatusTop(static_cast<int>(m_rows.size())), kListW - 32);
 }

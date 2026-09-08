@@ -20,6 +20,8 @@
 // 在 net_test.cpp / audio_test.cpp 中实现
 void RunNetTests();
 void RunAudioTests();
+void RunDurationTests();
+void RunTagWriteTests();
 void RunTagTests();
 
 
@@ -525,6 +527,8 @@ int main()
 
     std::printf("\n--- 音频 ---\n");
     RunAudioTests();
+    RunDurationTests();
+    RunTagWriteTests();
 
     std::printf("\n--- 在线下载 ---\n");
     RunTagTests();

@@ -5,6 +5,7 @@
 #include <vector>
 
 class CUpdater;
+class CApp;
 
 // 设置界面：偏好开关、关于、检查更新。
 class CSettingsScreen : public CScreen
@@ -12,6 +13,8 @@ class CSettingsScreen : public CScreen
 public:
     // updater 的生命周期由 CApp 持有
     void SetUpdater(CUpdater* updater) { m_updater = updater; }
+    // 关于页要显示启动各阶段的耗时，那份数据在 CApp 手上
+    void SetApp(const CApp* app) { m_app = app; }
 
     void OnEnter(ScreenContext& ctx) override;
     void Update(ScreenContext& ctx, double delta_seconds) override;
@@ -27,6 +30,8 @@ private:
         ITEM_DIM,
         ITEM_TRANSLATION,
         ITEM_LYRIC_LAYOUT,
+        ITEM_LYRIC_SYNC,
+        ITEM_EMBED,
         ITEM_BROWSE,
         ITEM_MUSIC_DIR,
         ITEM_NETWORK,
@@ -48,6 +53,7 @@ private:
     void DrawUpdateStatus(ScreenContext& ctx, int x, int y, int width);
 
     CUpdater* m_updater{};
+    const CApp* m_app{};
     std::vector<Row> m_rows;
     int m_selected{};
     bool m_show_about{};

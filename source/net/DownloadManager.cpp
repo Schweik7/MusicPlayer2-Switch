@@ -2,6 +2,7 @@
 #include "HttpClient.h"
 #include "UrlUtil.h"
 #include "../core/FileUtil.h"
+#include "../core/TagWriter.h"
 #include "../core/StringUtil.h"
 
 #include <cstdio>
@@ -52,6 +53,46 @@ std::string CDownloadManager::GetCoverSavePath(const std::string& audio_file_pat
     if (ext != "png" && ext != "jpg" && ext != "jpeg")
         ext = "jpg";
     return FileUtil::ReplaceExtension(audio_file_path, "." + ext);
+}
+
+std::string CDownloadManager::EmbedIntoAudioFile(const AutoRequest& request)
+{
+    if (request.audio_file_path.empty() || !TagWriter::CanEmbed(request.audio_file_path))
+        return std::string();
+
+    // 刚写到磁盘上的那两个文件就是要嵌的内容。从磁盘再读一遍而不是把字节留在内存里，
+    // 是因为这样能顺带确认"外部文件确实写成功了"——嵌入是锦上添花，
+    // 不该在外部文件都没写成的情况下自作主张去改用户的音乐文件。
+    std::string lyric_path, cover_path;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        lyric_path = m_status.saved_lyric_path;
+        cover_path = m_status.saved_cover_path;
+    }
+
+    std::string lyric;
+    const bool has_lyric = !lyric_path.empty() && FileUtil::ReadAll(lyric_path, lyric)
+                           && !lyric.empty();
+
+    AudioTag::Picture cover;
+    bool has_cover = false;
+    if (!cover_path.empty() && FileUtil::ReadAll(cover_path, cover.data) && !cover.data.empty())
+    {
+        const std::string ext = StringUtil::ToLower(FileUtil::GetExtension(cover_path));
+        cover.mime = (ext == "png") ? "image/png" : "image/jpeg";
+        cover.type = 3;                     // 正面封面
+        has_cover = true;
+    }
+
+    if (!has_lyric && !has_cover)
+        return std::string();
+
+    const TagWriter::Result result = TagWriter::Embed(request.audio_file_path,
+                                                      has_cover ? &cover : nullptr,
+                                                      has_lyric ? &lyric : nullptr);
+    if (result == TagWriter::RESULT_OK)
+        return "已写入歌曲文件";
+    return std::string("嵌入失败：") + TagWriter::ResultText(result);
 }
 
 void CDownloadManager::SetStatus(State state, const std::string& message)
@@ -197,6 +238,12 @@ void CDownloadManager::PerformDownloads(const DownloadItem& item, const AutoRequ
         return;
     }
 
+    // 嵌入要在拿锁之前做：它可能要重写几十兆的文件，
+    // 抱着锁干这件事会让 UI 线程的 Poll() 一起卡住。
+    std::string embed_note;
+    if ((lyric_ok || cover_ok) && request.embed_into_file)
+        embed_note = EmbedIntoAudioFile(request);
+
     std::lock_guard<std::mutex> lock(m_mutex);
     if (lyric_ok || cover_ok)
     {
@@ -207,6 +254,8 @@ void CDownloadManager::PerformDownloads(const DownloadItem& item, const AutoRequ
         if (cover_ok)
             done += done.empty() ? "封面" : "、封面";
         m_status.message = done + "下载成功";
+        if (!embed_note.empty())
+            m_status.message += "，" + embed_note;
     }
     else
     {

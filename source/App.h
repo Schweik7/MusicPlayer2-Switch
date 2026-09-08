@@ -13,6 +13,7 @@
 #include "ui/Screen.h"
 
 #include <memory>
+#include <vector>
 
 // 应用外壳：持有各子系统，跑主循环，画公共的顶栏/底栏/提示条。
 class CApp
@@ -43,6 +44,11 @@ private:
     // 后台扫描完成后把结果接进播放列表
     void HandleScanResult();
 
+    // 启动过程中每完成一个阶段记一笔耗时，并顺手把这句话画到屏幕上。
+    // 记录是为了让"启动慢"这件事有据可查——各阶段耗时会显示在设置 → 关于里；
+    // 绘制是为了别让用户对着黑屏干等。
+    void BootStage(const char* name);
+
     CRenderer m_renderer;
     CPlayer m_player;
     CInputMap m_input;
@@ -72,4 +78,17 @@ private:
     // 上一帧观察到的下载状态，用于识别"刚刚完成"这个瞬间
     int m_last_download_state{};
     uint32_t m_scan_start_ticks{};
+
+public:
+    struct BootStageTime
+    {
+        const char* name;
+        uint32_t ms;
+    };
+    const std::vector<BootStageTime>& GetBootTimings() const { return m_boot_timings; }
+
+private:
+    std::vector<BootStageTime> m_boot_timings;
+    uint32_t m_boot_start_ticks{};
+    uint32_t m_boot_last_ticks{};
 };

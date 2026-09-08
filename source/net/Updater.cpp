@@ -30,24 +30,8 @@ namespace
         return ok && magic[0] == 'N' && magic[1] == 'R' && magic[2] == 'O' && magic[3] == '0';
     }
 
-    // 把源文件挪到目标位置：先试改名，不行就复制后删源文件。
-    // 单靠 rename 在实机上会失败（用户遇到过"无法备份当前版本"），
-    // Switch 的 FS 层对改名的支持并不可靠，复制慢一些但一定能用。
-    bool MoveOrCopy(const std::string& src, const std::string& dst)
-    {
-        std::remove(dst.c_str());
-        if (std::rename(src.c_str(), dst.c_str()) == 0)
-        {
-            FileUtil::CommitDevice(dst);
-            return true;
-        }
-        if (!FileUtil::CopyFileTo(src, dst))
-            return false;
-        std::remove(src.c_str());
-        FileUtil::CommitDevice(dst);
-        return true;
-    }
-
+    // "先试改名、不行就复制后删源"这套退路挪到了 FileUtil::MoveOverwrite：
+    // 标签写入也要"写临时文件再顶替原文件"，同一件事不该有两份实现。
 }
 
 bool CUpdater::IsNewerVersion(const std::string& remote, const std::string& local)
@@ -238,16 +222,16 @@ void CUpdater::DoInstall()
     // Switch 的 FS 层对改名的支持并不可靠。复制慢一些但一定能用。
     std::remove(backup_path.c_str());
     bool had_old = FileUtil::Exists(m_self_path);
-    if (had_old && !MoveOrCopy(m_self_path, backup_path))
+    if (had_old && !FileUtil::MoveOverwrite(m_self_path, backup_path))
     {
         std::remove(temp_path.c_str());
         SetStatus(ST_FAILED, "无法备份当前版本，已放弃更新（errno=" + std::to_string(errno) + "）");
         return;
     }
-    if (!MoveOrCopy(temp_path, m_self_path))
+    if (!FileUtil::MoveOverwrite(temp_path, m_self_path))
     {
         if (had_old)
-            MoveOrCopy(backup_path, m_self_path);       // 回滚
+            FileUtil::MoveOverwrite(backup_path, m_self_path);       // 回滚
         std::remove(temp_path.c_str());
         SetStatus(ST_FAILED, "无法写入新版本，已还原原有版本（errno="
                              + std::to_string(errno) + "）");

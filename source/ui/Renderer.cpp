@@ -11,6 +11,7 @@
 #include <SDL2/SDL_ttf.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace
@@ -42,7 +43,7 @@ CRenderer::~CRenderer()
     Uninit();
 }
 
-bool CRenderer::Init()
+bool CRenderer::Init(const std::string& custom_font_path)
 {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
@@ -77,13 +78,13 @@ bool CRenderer::Init()
     // 封面是可选功能，初始化失败不算致命错误
     IMG_Init(IMG_INIT_JPG | IMG_INIT_PNG);
 
-    if (!LoadFonts())
+    if (!LoadFonts(custom_font_path))
         return false;
 
     return true;
 }
 
-bool CRenderer::LoadFonts()
+bool CRenderer::LoadFonts(const std::string& custom_font_path)
 {
     Result rc = plInitialize(PlServiceType_User);
     if (R_FAILED(rc))
@@ -104,30 +105,55 @@ bool CRenderer::LoadFonts()
         PlSharedFontType_NintendoExt,
     };
 
-    for (int size_index = 0; size_index < FS_COUNT; ++size_index)
+    // 用户自带字体排在最前面，系统字体留在后面兜底：
+    // 自带字体缺哪个字形，PickFont 会自动往后找，不会出现豆腐块。
+    if (!custom_font_path.empty() && FileUtil::ReadAll(custom_font_path, m_custom_font_data)
+        && m_custom_font_data.size() > 1024)
     {
-        for (PlSharedFontType type : kFontTypes)
-        {
-            PlFontData font_data{};
-            if (R_FAILED(plGetSharedFontByType(&font_data, type)))
-                continue;                                   // 某些语言的字体在部分机型上可能缺失
+        m_shared_fonts.push_back(SharedFont{ m_custom_font_data.data(),
+                                             m_custom_font_data.size() });
+    }
+    else
+    {
+        m_custom_font_data.clear();
+    }
 
-            SDL_RWops* rw = SDL_RWFromConstMem(font_data.address, font_data.size);
-            if (rw == nullptr)
-                continue;
-            // freesrc = 1：TTF_CloseFont 时一并释放 RWops，字体数据本身归系统所有
-            TTF_Font* font = TTF_OpenFontRW(rw, 1, kFontPixelSize[size_index]);
-            if (font != nullptr)
-                m_font_chains[size_index].fonts.push_back(font);
-        }
+    // 这里只把字体数据的地址取出来。真正的 TTF_OpenFontRW 交给 EnsureChain，
+    // 用到哪一档才解析哪一档——36 次解析全压在启动路径上要好几秒的黑屏。
+    for (PlSharedFontType type : kFontTypes)
+    {
+        PlFontData font_data{};
+        if (R_FAILED(plGetSharedFontByType(&font_data, type)))
+            continue;                                   // 某些语言的字体在部分机型上可能缺失
+        m_shared_fonts.push_back(SharedFont{ font_data.address,
+                                             static_cast<size_t>(font_data.size) });
+    }
 
-        if (m_font_chains[size_index].fonts.empty())
-        {
-            m_last_error = "没有可用的系统字体";
-            return false;
-        }
+    if (m_shared_fonts.empty())
+    {
+        m_last_error = "没有可用的系统字体";
+        return false;
     }
     return true;
+}
+
+void CRenderer::EnsureChain(FontSize size) const
+{
+    FontChain& chain = m_font_chains[size];
+    if (chain.loaded)
+        return;
+    chain.loaded = true;
+
+    for (const SharedFont& shared : m_shared_fonts)
+    {
+        SDL_RWops* rw = SDL_RWFromConstMem(shared.address, static_cast<int>(shared.size));
+        if (rw == nullptr)
+            continue;
+        // freesrc = 1：TTF_CloseFont 时一并释放 RWops，字体数据本身归系统所有
+        TTF_Font* font = TTF_OpenFontRW(rw, 1, kFontPixelSize[size]);
+        if (font != nullptr)
+            chain.fonts.push_back(font);
+    }
 }
 
 void CRenderer::Uninit()
@@ -272,6 +298,7 @@ void CRenderer::PopClip()
 
 TTF_Font* CRenderer::PickFont(FontSize size, char32_t code_point) const
 {
+    EnsureChain(size);
     const FontChain& chain = m_font_chains[size];
     for (TTF_Font* font : chain.fonts)
     {
@@ -355,6 +382,7 @@ std::vector<std::string> CRenderer::WrapText(const std::string& utf8, FontSize s
 
 int CRenderer::GetFontChainSize(FontSize size) const
 {
+    EnsureChain(size);
     return static_cast<int>(m_font_chains[size].fonts.size());
 }
 
@@ -362,6 +390,7 @@ int CRenderer::FindFontIndexForCodePoint(FontSize size, char32_t code_point) con
 {
     // 和 PickFont 的查找逻辑一致，区别是找不到时返回 -1 而不是退回第一个字体，
     // 这样诊断输出才能区分“真的有这个字形”和“画成了豆腐块”。
+    EnsureChain(size);
     const FontChain& chain = m_font_chains[size];
     for (size_t i = 0; i < chain.fonts.size(); ++i)
     {
@@ -492,6 +521,39 @@ int CRenderer::DrawText(const std::string& utf8, int x, int y, FontSize size, Co
     return cached->width;
 }
 
+void CRenderer::DrawTextMarquee(const std::string& utf8, int x, int y, int max_width,
+                                FontSize size, Color color)
+{
+    int width = 0, height = 0;
+    MeasureText(utf8, size, width, height);
+    if (width <= max_width)
+    {
+        DrawText(utf8, x, y, size, color);
+        return;
+    }
+
+    // 一个来回：停顿 → 向左跑完超出的部分 → 停顿 → 原路退回
+    const double travel = width - max_width;
+    const double kSpeed = 45.0;             // 像素/秒
+    const double kHold = 1.6;               // 两端的停顿时长（秒）
+    const double half = travel / kSpeed + kHold;
+    const double t = std::fmod(m_time_seconds, half * 2.0);
+
+    double offset;
+    if (t < kHold)
+        offset = 0.0;
+    else if (t < half)
+        offset = (t - kHold) * kSpeed;
+    else if (t < half + kHold)
+        offset = travel;
+    else
+        offset = travel - (t - half - kHold) * kSpeed;
+
+    PushClip(x, y, max_width, height);
+    DrawText(utf8, x - static_cast<int>(offset), y, size, color);
+    PopClip();
+}
+
 int CRenderer::DrawTextEllipsis(const std::string& utf8, int x, int y, int max_width, FontSize size,
                                 Color color, Align align)
 {
@@ -545,6 +607,7 @@ void CRenderer::MeasureText(const std::string& utf8, FontSize size, int& width, 
 
 int CRenderer::GetLineHeight(FontSize size) const
 {
+    EnsureChain(size);
     const FontChain& chain = m_font_chains[size];
     if (chain.fonts.empty())
         return kFontPixelSize[size];

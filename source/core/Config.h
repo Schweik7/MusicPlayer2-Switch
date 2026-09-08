@@ -55,6 +55,16 @@ public:
     bool GetLyricTwoColumn() const { return GetBool("lyric_two_column", false); }
     void SetLyricTwoColumn(bool b) { SetBool("lyric_two_column", b); }
 
+    // 拖动歌词时是否连同播放进度一起跳。
+    // 关闭时拖动只是翻看，松手几秒后自动滑回当前播放的那句。
+    bool GetLyricSeekSync() const { return GetBool("lyric_seek_sync", false); }
+    void SetLyricSeekSync(bool b) { SetBool("lyric_seek_sync", b); }
+
+    // 下载完的歌词/封面是否顺手写进音频文件本身。
+    // 默认关：这要重写整个文件，得由用户明确同意才动他的音乐。
+    bool GetEmbedDownloads() const { return GetBool("embed_downloads", false); }
+    void SetEmbedDownloads(bool b) { SetBool("embed_downloads", b); }
+
     bool GetShowSpectrum() const { return GetBool("show_spectrum", true); }
     void SetShowSpectrum(bool b) { SetBool("show_spectrum", b); }
 

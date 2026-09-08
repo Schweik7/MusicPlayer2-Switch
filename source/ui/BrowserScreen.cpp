@@ -40,7 +40,7 @@ void CBrowserScreen::OnEnter(ScreenContext& ctx)
 
 const char* CBrowserScreen::GetButtonHints() const
 {
-    return "A 打开/播放   B 上级目录   X 播放整个目录   Y 设为音乐目录   − 播放列表   ＋ 设置";
+    return "A 打开/播放|B 上级目录|X 播放整个目录|Y 设为音乐目录|− 播放列表|＋ 设置";
 }
 
 void CBrowserScreen::Navigate(ScreenContext& ctx, const std::string& dir)

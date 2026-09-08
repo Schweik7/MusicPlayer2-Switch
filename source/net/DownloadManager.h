@@ -49,6 +49,9 @@ public:
         bool download_lyric{ true };
         bool download_cover{ true };
         bool with_translation{ true };
+        // 下载成功后是否把歌词和封面写进音频文件本身。
+        // 外部的 .lrc / .jpg 仍然保留：嵌入失败时它们就是退路。
+        bool embed_into_file{ false };
     };
 
     // 一次快照，供 UI 线程读取
@@ -109,6 +112,11 @@ private:
     // 返回是否成功；失败原因写进 m_status.message
     bool DoDownloadLyric(const DownloadItem& item, const AutoRequest& request);
     bool DoDownloadCover(const DownloadItem& item, const AutoRequest& request);
+
+    // 把刚下载到的歌词/封面写进音频文件。跑在工作线程上——
+    // 一首无损要重写几十兆，放主线程会卡住界面。
+    // 返回一句给用户看的结果，没做任何事时返回空串。
+    std::string EmbedIntoAudioFile(const AutoRequest& request);
 
     void SetStatus(State state, const std::string& message);
 

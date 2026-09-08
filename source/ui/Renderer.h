@@ -40,8 +40,11 @@ public:
     CRenderer();
     ~CRenderer();
 
-    bool Init();
+    // custom_font_path 为空或文件不存在时只用系统共享字体。
+    bool Init(const std::string& custom_font_path = std::string());
     void Uninit();
+    // 能否开始绘制。启动过程中用它判断进度画面画不画得出来。
+    bool IsReady() const { return m_renderer != nullptr; }
     const std::string& GetLastError() const { return m_last_error; }
 
     void BeginFrame();
@@ -66,6 +69,11 @@ public:
     // 超出 max_width 时以省略号截断
     int  DrawTextEllipsis(const std::string& utf8, int x, int y, int max_width, FontSize size,
                           Color color, Align align = ALIGN_LEFT);
+    // 超出 max_width 时在框内来回滚动（跑马灯），否则等同 DrawText。
+    // 曲目标题常常比左栏还宽，截断之后看不到后半截；滚动能让它整句读完。
+    // 两端各停顿一下再折返，一直匀速跑动反而难读。
+    void DrawTextMarquee(const std::string& utf8, int x, int y, int max_width, FontSize size,
+                         Color color);
     void MeasureText(const std::string& utf8, FontSize size, int& width, int& height);
     // 按最大宽度折行。优先在空格处断，中日韩没有空格则允许在任意字符间断。
     // 返回的每一段都保证不超过 max_width（单个字符本身就超宽时除外）。
@@ -81,6 +89,8 @@ public:
 
     // 每帧末尾调用：淘汰长时间没用到的文字纹理
     void TrimCache();
+    // 每帧开头调用：推进动画用的时间基准（跑马灯等）
+    void AdvanceTime(double delta_seconds) { m_time_seconds += delta_seconds; }
 
     // ---- 诊断 ----
     int GetFontChainSize(FontSize size) const;
@@ -91,6 +101,7 @@ private:
     struct FontChain
     {
         std::vector<TTF_Font*> fonts;       // 回退链，下标 0 优先
+        bool loaded{};                      // 是否已经建过；空链也算建过，不必反复重试
     };
 
     struct TextRun
@@ -107,7 +118,13 @@ private:
         uint64_t last_used{};
     };
 
-    bool LoadFonts();
+    // 只做 plInitialize 并把各语言字体的地址取出来缓存，不真正解析字体。
+    bool LoadFonts(const std::string& custom_font_path);
+    // 首次用到某个字号时才把这一档的回退链建起来。
+    //
+    // 六个字号 × 六个回退字体 = 36 次 TTF_OpenFontRW，全放在启动路径上要好几秒，
+    // 而且期间屏幕是黑的。实际上一次会话里很多字号根本用不到。
+    void EnsureChain(FontSize size) const;
     // 从 surface 建纹理并释放 surface；surface 为空时返回 nullptr
     SDL_Texture* TextureFromSurface(struct SDL_Surface* surface);
     // 把 UTF-8 串按“哪个字体能画出这个字”切成若干段
@@ -120,9 +137,21 @@ private:
     std::string m_last_error;
     bool m_pl_inited{};                 // 共享字体服务是否已初始化，决定要不要调 plExit
 
-    FontChain m_font_chains[FS_COUNT];
+    struct SharedFont
+    {
+        const void* address{};
+        size_t size{};
+    };
+    std::vector<SharedFont> m_shared_fonts;         // 字体数据，按回退顺序排列
+
+    // 用户自带字体的字节。必须一直留着：SDL_RWFromConstMem 不复制数据，
+    // 而每个字号都会各开一次 RWops 指向这块内存。
+    std::string m_custom_font_data;
+
+    mutable FontChain m_font_chains[FS_COUNT];
     std::map<std::string, CachedText> m_text_cache;
     uint64_t m_frame_counter{};
+    double m_time_seconds{};
 
     int m_clip_depth{};
 };

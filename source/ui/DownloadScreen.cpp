@@ -43,7 +43,7 @@ void CDownloadScreen::OnLeave(ScreenContext& ctx)
 
 const char* CDownloadScreen::GetButtonHints() const
 {
-    return "A 下载选中项   X 搜索   Y 切换音乐源   ZL/ZR 歌词/封面开关   B 返回";
+    return "A 下载选中项|X 搜索|Y 切换音乐源|ZL/ZR 歌词/封面开关|＋ 写入文件开关|B 返回";
 }
 
 void CDownloadScreen::ResetKeywordFromCurrentSong(ScreenContext& ctx)
@@ -67,6 +67,7 @@ CDownloadManager::AutoRequest CDownloadScreen::MakeRequest(ScreenContext& ctx) c
     request.download_lyric = m_download_lyric;
     request.download_cover = m_download_cover;
     request.with_translation = ctx.player->GetConfig().GetShowTranslation();
+    request.embed_into_file = ctx.player->GetConfig().GetEmbedDownloads();
     return request;
 }
 
@@ -183,6 +184,16 @@ void CDownloadScreen::Update(ScreenContext& ctx, double delta_seconds)
         m_download_cover = !m_download_cover;
         ctx.ShowToast(m_download_cover ? "下载封面：开" : "下载封面：关");
     }
+    // 是否把下载到的东西写进歌曲文件本身。放在这里而不是只留在设置里，
+    // 是因为决定"这一首要不要嵌"的时机就在按下载之前。
+    if (input.IsDown(CInputMap::BTN_PLUS))
+    {
+        CConfig& config = ctx.player->GetConfig();
+        const bool embed = !config.GetEmbedDownloads();
+        config.SetEmbedDownloads(embed);
+        ctx.ShowToast(embed ? "写入歌曲文件：开（仅 MP3 / FLAC）"
+                            : "写入歌曲文件：关，只存在歌曲旁边");
+    }
 
     const int count = static_cast<int>(status.results.size());
     const int visible = VisibleCount();
@@ -253,11 +264,12 @@ void CDownloadScreen::Draw(ScreenContext& ctx)
                        x + 78, keyword_y, width - 90 - 200, CRenderer::FS_NORMAL, Theme::kText);
 
     // 右侧：音乐源 + 下载项开关
-    char toggles[128];
-    std::snprintf(toggles, sizeof(toggles), "%s   歌词 %s   封面 %s",
+    char toggles[160];
+    std::snprintf(toggles, sizeof(toggles), "%s   歌词 %s   封面 %s   写入文件 %s",
                   downloader.GetProviderName(),
                   m_download_lyric ? "√" : "×",
-                  m_download_cover ? "√" : "×");
+                  m_download_cover ? "√" : "×",
+                  ctx.player->GetConfig().GetEmbedDownloads() ? "√" : "×");
     r.DrawText(toggles, x + width - 12, keyword_y + 2, CRenderer::FS_SMALL,
                Theme::kAccent, CRenderer::ALIGN_RIGHT);
 

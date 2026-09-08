@@ -50,6 +50,38 @@ namespace
     // 触摸热区比 6 像素的可视进度条大得多——手指点不了那么准
     const Rect kProgressHit{ kLeftX - 12, kProgressY - 20, kLeftWidth + 24, 44 };
 
+    // 右栏（歌词 / 频谱）。绘制与触摸判定共用。
+    const int kRightX = kLeftX + kLeftWidth + Theme::kPadding * 2;
+    const int kRightWidth = Theme::kScreenWidth - kRightX - Theme::kPadding * 2;
+    const int kRightY = Theme::kHeaderHeight + 16;
+    const int kRightHeight = Theme::kScreenHeight - Theme::kHeaderHeight - Theme::kFooterHeight - 32;
+
+    // 歌词区右上角的两个小工具按钮
+    const int kToolSize = 40;
+    const int kToolGap = 8;
+    const Rect kBtnSync{ kRightX + kRightWidth - kToolSize, kRightY, kToolSize, kToolSize };
+    const Rect kBtnDownload{ kBtnSync.x - kToolSize - kToolGap, kRightY, kToolSize, kToolSize };
+
+    // 右下角的 ABXY，按手柄上的实际方位摆成菱形：
+    //          [X] 视图
+    //   [Y] 模式     [A] 播放
+    //          [B] 偏移
+    // 每格里上面是按键字母、下面是功能名，点一下等同按那个键。
+    const int kFaceCellW = 62;
+    const int kFaceCellH = 62;
+    const int kFaceRight = kRightX + kRightWidth;
+    const int kFaceBottom = kRightY + kRightHeight;
+    const int kFaceLeft = kFaceRight - kFaceCellW * 3;
+    const int kFaceTop = kFaceBottom - kFaceCellH * 3;
+
+    const Rect kBtnFaceX{ kFaceLeft + kFaceCellW, kFaceTop, kFaceCellW, kFaceCellH };
+    const Rect kBtnFaceY{ kFaceLeft, kFaceTop + kFaceCellH, kFaceCellW, kFaceCellH };
+    const Rect kBtnFaceA{ kFaceLeft + kFaceCellW * 2, kFaceTop + kFaceCellH, kFaceCellW, kFaceCellH };
+    const Rect kBtnFaceB{ kFaceLeft + kFaceCellW, kFaceTop + kFaceCellH * 2, kFaceCellW, kFaceCellH };
+
+    // 松手后还按浏览位置停留多久，然后滑回当前播放的那句
+    const double kLyricBrowseHold = 3.0;
+
     double Clamp01(double value)
     {
         return std::max(0.0, std::min(1.0, value));
@@ -86,9 +118,10 @@ void CPlayerScreen::OnEnter(ScreenContext& ctx)
 
 const char* CPlayerScreen::GetButtonHints() const
 {
-    // 走带控制不写在这里：屏幕上的十字按钮与方向键一一对应，本身就是说明
-    return "ZL/ZR ±5秒   摇杆←→ ±1秒   摇杆↑↓ 音量   X 视图   Y 模式   "
-           "按下右摇杆 下载   − 列表   ＋ 设置";
+    // 走带控制和 ABXY 都不写在这里：屏幕上的十字按钮与方向键一一对应，
+    // 右下角的菱形按钮与 ABXY 一一对应，布局本身就是说明。
+    // 用 '|' 分段，底栏会按段均匀铺开。
+    return "ZL/ZR ±5秒|摇杆←→ ±1秒|摇杆↑↓ 音量|按下右摇杆 下载|− 列表|＋ 设置";
 }
 
 void CPlayerScreen::RefreshCover(ScreenContext& ctx)
@@ -204,7 +237,9 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
     if (m_volume_overlay_timer > 0.0)
         m_volume_overlay_timer -= delta_seconds;
 
-    HandleTouch(ctx);
+    // 歌词区的拖动优先：手指在歌词上划的时候不该同时被当成点按钮
+    if (!HandleLyricDrag(ctx, delta_seconds))
+        HandleTouch(ctx);
 
     // 右摇杆左右拖动进度：按住时按比例累计，松开时一次性定位，
     // 避免每帧都调用一次 Mix_SetMusicPosition
@@ -248,6 +283,118 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         m_lyric_scroll = std::max(0.0, m_lyric_scroll - delta_seconds * 5.0);
 }
 
+bool CPlayerScreen::IsTwoColumnLyric(ScreenContext& ctx) const
+{
+    const CConfig& config = ctx.player->GetConfig();
+    if (!config.GetLyricTwoColumn() || !config.GetShowTranslation())
+        return false;
+    // 这首歌没有译文时右栏是一片空白，那就不算双栏
+    for (const CLrcParser::Lyric& line : ctx.player->GetLyrics().GetLyrics())
+    {
+        if (!line.translate.empty())
+            return true;
+    }
+    return false;
+}
+
+bool CPlayerScreen::FaceButtonsVisible(ScreenContext& ctx) const
+{
+    // 双栏歌词的右半边正好压在这组按钮上，那种排版下就不画了
+    return !(m_view == VIEW_LYRIC && IsTwoColumnLyric(ctx));
+}
+
+void CPlayerScreen::ActivateFaceButton(ScreenContext& ctx, HitButton button)
+{
+    CPlayer& player = *ctx.player;
+    switch (button)
+    {
+    case HIT_FACE_A:
+        player.PlayOrPause();
+        break;
+    case HIT_FACE_X:
+        m_view = static_cast<ViewMode>((m_view + 1) % VIEW_COUNT);
+        break;
+    case HIT_FACE_Y:
+        player.SwitchRepeatMode();
+        ctx.ShowToast(CPlayer::GetRepeatModeName(player.GetRepeatMode()));
+        break;
+    case HIT_FACE_B:
+        // B 在这个界面上只作修饰键用，单点它没有对应动作，
+        // 那就把它是干什么用的说出来，免得点了没反应像是坏了
+        ctx.ShowToast("按住 B + 方向键 ← → 调整歌词偏移");
+        break;
+    default:
+        break;
+    }
+}
+
+bool CPlayerScreen::HandleLyricDrag(ScreenContext& ctx, double delta_seconds)
+{
+    const CInputMap::TouchState& touch = ctx.input->GetTouch();
+    CPlayer& player = *ctx.player;
+    const bool sync = player.GetConfig().GetLyricSeekSync();
+
+    if (m_view != VIEW_LYRIC || player.GetLyrics().IsEmpty())
+    {
+        m_lyric_dragging = false;
+        m_lyric_browse_offset = 0.0;
+        m_lyric_browse_hold = 0.0;
+        return false;
+    }
+
+    if (touch.pressed && m_lyric_rect.Contains(touch.x, touch.y)
+        && !kBtnSync.Contains(touch.x, touch.y) && !kBtnDownload.Contains(touch.x, touch.y)
+        && !(FaceButtonsVisible(ctx)
+             && (kBtnFaceA.Contains(touch.x, touch.y) || kBtnFaceB.Contains(touch.x, touch.y)
+                 || kBtnFaceX.Contains(touch.x, touch.y) || kBtnFaceY.Contains(touch.x, touch.y))))
+    {
+        m_lyric_dragging = true;
+    }
+
+    if (m_lyric_dragging)
+    {
+        // 向下拖 = 往前翻，所以偏移直接跟着手指走
+        m_lyric_browse_offset += touch.step_y;
+        m_lyric_browse_hold = kLyricBrowseHold;
+
+        if (!touch.touching)
+        {
+            m_lyric_dragging = false;
+            // 定位放在松手这一刻做。拖动过程中每帧 seek 会让解码器不停重新缓冲，
+            // 声音会碎掉；松手再跳一次，听感上和实时跟随没有区别。
+            if (sync && !touch.IsDrag())
+            {
+                // 只是点了一下，没拖动：不该改动进度
+            }
+            else if (sync && m_lyric_browse_index >= 0)
+            {
+                const std::vector<CLrcParser::Lyric>& lines = player.GetLyrics().GetLyrics();
+                if (m_lyric_browse_index < static_cast<int>(lines.size()))
+                {
+                    player.SeekTo(lines[m_lyric_browse_index].time_start);
+                    // 进度已经跟过去了，浏览偏移就该归零
+                    m_lyric_browse_offset = 0.0;
+                    m_lyric_browse_hold = 0.0;
+                }
+            }
+        }
+        return true;
+    }
+
+    // 松手之后先停一会儿让人读完，再滑回当前播放的那句
+    if (m_lyric_browse_hold > 0.0)
+    {
+        m_lyric_browse_hold -= delta_seconds;
+    }
+    else if (m_lyric_browse_offset != 0.0)
+    {
+        m_lyric_browse_offset *= std::pow(0.02, delta_seconds);
+        if (std::fabs(m_lyric_browse_offset) < 1.0)
+            m_lyric_browse_offset = 0.0;
+    }
+    return false;
+}
+
 void CPlayerScreen::HandleTouch(ScreenContext& ctx)
 {
     const CInputMap::TouchState& touch = ctx.input->GetTouch();
@@ -271,14 +418,24 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         return;
     }
 
-    // ---- 按钮 ----
+    // ---- 按下态高亮 ----
+    const bool face_visible = FaceButtonsVisible(ctx);
     m_pressed_button = HIT_NONE;
     if (touch.touching)
     {
-        if (kBtnPrev.Contains(touch.x, touch.y))      m_pressed_button = HIT_PREV;
-        else if (kBtnPlay.Contains(touch.x, touch.y)) m_pressed_button = HIT_PLAY;
-        else if (kBtnNext.Contains(touch.x, touch.y)) m_pressed_button = HIT_NEXT;
-        else if (kBtnStop.Contains(touch.x, touch.y)) m_pressed_button = HIT_STOP;
+        if (kBtnPrev.Contains(touch.x, touch.y))          m_pressed_button = HIT_PREV;
+        else if (kBtnPlay.Contains(touch.x, touch.y))     m_pressed_button = HIT_PLAY;
+        else if (kBtnNext.Contains(touch.x, touch.y))     m_pressed_button = HIT_NEXT;
+        else if (kBtnStop.Contains(touch.x, touch.y))     m_pressed_button = HIT_STOP;
+        else if (kBtnDownload.Contains(touch.x, touch.y)) m_pressed_button = HIT_TOOL_DOWNLOAD;
+        else if (kBtnSync.Contains(touch.x, touch.y))     m_pressed_button = HIT_TOOL_SYNC;
+        else if (face_visible)
+        {
+            if (kBtnFaceA.Contains(touch.x, touch.y))      m_pressed_button = HIT_FACE_A;
+            else if (kBtnFaceB.Contains(touch.x, touch.y)) m_pressed_button = HIT_FACE_B;
+            else if (kBtnFaceX.Contains(touch.x, touch.y)) m_pressed_button = HIT_FACE_X;
+            else if (kBtnFaceY.Contains(touch.x, touch.y)) m_pressed_button = HIT_FACE_Y;
+        }
     }
 
     // 划动不算点击，否则在屏幕上滑一下会误触发
@@ -301,6 +458,35 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
     {
         player.Stop();
         ctx.ShowToast("已停止");
+    }
+    else if (kBtnDownload.Contains(touch.x, touch.y))
+    {
+        if (player.GetCurrentSong().file_path.empty())
+            ctx.ShowToast("没有正在播放的曲目");
+        else
+            ctx.next_screen = SCREEN_DOWNLOAD;
+    }
+    else if (kBtnSync.Contains(touch.x, touch.y))
+    {
+        const bool sync = !player.GetConfig().GetLyricSeekSync();
+        player.GetConfig().SetLyricSeekSync(sync);
+        ctx.ShowToast(sync ? "拖动歌词将同时改变播放进度" : "拖动歌词只是翻看，松手后自动归位");
+    }
+    else if (face_visible && kBtnFaceA.Contains(touch.x, touch.y))
+    {
+        ActivateFaceButton(ctx, HIT_FACE_A);
+    }
+    else if (face_visible && kBtnFaceB.Contains(touch.x, touch.y))
+    {
+        ActivateFaceButton(ctx, HIT_FACE_B);
+    }
+    else if (face_visible && kBtnFaceX.Contains(touch.x, touch.y))
+    {
+        ActivateFaceButton(ctx, HIT_FACE_X);
+    }
+    else if (face_visible && kBtnFaceY.Contains(touch.x, touch.y))
+    {
+        ActivateFaceButton(ctx, HIT_FACE_Y);
     }
     else if (kCoverRect.Contains(touch.x, touch.y))
     {
@@ -361,10 +547,12 @@ void CPlayerScreen::DrawSongInfo(ScreenContext& ctx)
         return;
     }
 
-    r.DrawTextEllipsis(song.GetTitle(), kLeftX, kInfoY, kLeftWidth, CRenderer::FS_HUGE,
-                       Theme::kText);
-    r.DrawTextEllipsis(song.GetArtist(), kLeftX, kInfoY + 46, kLeftWidth, CRenderer::FS_NORMAL,
-                       Theme::kTextDim);
+    // 标题和艺术家用跑马灯：左栏只有 260 像素，中文歌名稍长就会被省略号切掉，
+    // 而这两行恰恰是最需要看全的信息
+    r.DrawTextMarquee(song.GetTitle(), kLeftX, kInfoY, kLeftWidth, CRenderer::FS_HUGE,
+                      Theme::kText);
+    r.DrawTextMarquee(song.GetArtist(), kLeftX, kInfoY + 46, kLeftWidth, CRenderer::FS_NORMAL,
+                      Theme::kTextDim);
     if (!song.album.empty())
     {
         r.DrawTextEllipsis(song.album, kLeftX, kInfoY + 76, kLeftWidth, CRenderer::FS_SMALL,
@@ -438,6 +626,80 @@ void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
         default:
             break;
         }
+    }
+}
+
+void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
+{
+    CRenderer& r = *ctx.renderer;
+    const bool sync = ctx.player->GetConfig().GetLyricSeekSync();
+
+    struct ToolDef { const Rect& rect; HitButton id; bool active; };
+    const ToolDef tools[] = {
+        { kBtnDownload, HIT_TOOL_DOWNLOAD, false },
+        { kBtnSync,     HIT_TOOL_SYNC,     sync  },
+    };
+
+    for (const ToolDef& tool : tools)
+    {
+        const bool pressed = (m_pressed_button == tool.id);
+        Color background = Theme::kPanel.WithAlpha(200);
+        if (pressed)
+            background = Theme::kAccentDim;
+        else if (tool.active)
+            background = Theme::kAccent.WithAlpha(200);
+
+        r.FillRoundRect(tool.rect.x, tool.rect.y, tool.rect.w, tool.rect.h, 8, background);
+
+        // 图标用图形拼，不用字符：箭头这类符号未必在系统共享字体里有字形，
+        // 缺了就是个豆腐块。走带按钮那边也是这么做的。
+        const int cx = tool.rect.x + tool.rect.w / 2;
+        const int cy = tool.rect.y + tool.rect.h / 2;
+        const Color icon = Theme::kText;
+
+        if (tool.id == HIT_TOOL_DOWNLOAD)
+        {
+            // 向下的箭头 + 底部托盘：下载到本地
+            r.FillRect(cx - 2, cy - 12, 4, 11, icon);
+            r.FillTriangle(cx - 7, cy - 2, cx + 7, cy - 2, cx, cy + 7, icon);
+            r.FillRect(cx - 9, cy + 10, 18, 3, icon);
+        }
+        else
+        {
+            // 一上一下两个箭头：拖歌词时进度跟着走
+            r.FillTriangle(cx - 8, cy - 1, cx - 1, cy - 1, cx - 4, cy - 10, icon);
+            r.FillRect(cx - 6, cy - 1, 4, 11, icon);
+            r.FillTriangle(cx + 1, cy + 1, cx + 8, cy + 1, cx + 4, cy + 10, icon);
+            r.FillRect(cx + 2, cy - 10, 4, 11, icon);
+        }
+    }
+}
+
+void CPlayerScreen::DrawFaceButtons(ScreenContext& ctx)
+{
+    CRenderer& r = *ctx.renderer;
+    const bool playing = ctx.player->IsPlaying();
+
+    struct FaceDef { const Rect& rect; HitButton id; const char* key; const char* label; };
+    const FaceDef faces[] = {
+        { kBtnFaceX, HIT_FACE_X, "X", "视图" },
+        { kBtnFaceY, HIT_FACE_Y, "Y", "模式" },
+        { kBtnFaceA, HIT_FACE_A, "A", playing ? "暂停" : "播放" },
+        { kBtnFaceB, HIT_FACE_B, "B", "偏移" },
+    };
+
+    for (const FaceDef& face : faces)
+    {
+        const bool pressed = (m_pressed_button == face.id);
+        const int cx = face.rect.x + face.rect.w / 2;
+        // 圆形按钮画不了，就用一个接近正方形的大圆角矩形代替，视觉上足够像手柄按键
+        const int d = 40;
+        r.FillRoundRect(cx - d / 2, face.rect.y + 2, d, d, d / 2,
+                        pressed ? Theme::kAccentDim : Theme::kPanel.WithAlpha(210));
+        r.DrawText(face.key, cx, face.rect.y + 5, CRenderer::FS_NORMAL, Theme::kText,
+                   CRenderer::ALIGN_CENTER);
+        r.DrawText(face.label, cx, face.rect.y + 42, CRenderer::FS_SMALL, Theme::kTextDim,
+                   CRenderer::ALIGN_CENTER);
     }
 }
 
@@ -559,6 +821,7 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
     }
     const bool two_column = player.GetConfig().GetLyricTwoColumn() && show_translation
                             && has_translation;
+    (void)has_translation;
 
     const int column_gap = 24;
     const int column_width = two_column ? (width - column_gap) / 2 : width;
@@ -577,7 +840,9 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
     };
 
     const int kEntryGap = 14;
-    const int kMaxAround = 6;               // 当前行上下各准备这么多条，够铺满一屏
+    // 当前行上下各准备这么多条，够铺满一屏。手指把歌词拖出去多远，
+    // 就得多备多少条，否则拖到头会看见空白。
+    const int kMaxAround = 6 + std::min(120, static_cast<int>(std::fabs(m_lyric_browse_offset) / 36));
 
     auto build_entry = [&](int index) {
         Entry entry;
@@ -625,7 +890,7 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
 
     const double animation_offset = m_lyric_scroll * (entries[current_pos].height + kEntryGap);
     int current_top = y + height / 2 - entries[current_pos].height / 2
-                    + static_cast<int>(animation_offset);
+                    + static_cast<int>(animation_offset + m_lyric_browse_offset);
 
     // 由当前条目向上下推算出每条的顶端 y
     std::vector<int> tops(entries.size(), 0);
@@ -634,6 +899,21 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
         tops[i] = tops[i + 1] - entries[i].height - kEntryGap;
     for (size_t i = current_pos + 1; i < entries.size(); ++i)
         tops[i] = tops[i - 1] + entries[i - 1].height + kEntryGap;
+
+    // 记下落在视图中心的那句：松手时"同步进度"要跳到它上面去
+    const int view_center = y + height / 2;
+    m_lyric_browse_index = -1;
+    int best_distance = 0;
+    for (size_t i = 0; i < entries.size(); ++i)
+    {
+        const int entry_center = tops[i] + entries[i].height / 2;
+        const int distance = std::abs(entry_center - view_center);
+        if (m_lyric_browse_index < 0 || distance < best_distance)
+        {
+            best_distance = distance;
+            m_lyric_browse_index = entries[i].index;
+        }
+    }
 
     r.PushClip(x, y, width, height);
 
@@ -693,6 +973,23 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
     }
 
     r.PopClip();
+
+    // 正在拖动歌词时给出反馈：中心线 + 那句的时间。
+    // 没有这条线的话，"松手会跳到哪一句"全靠猜。
+    if (m_lyric_dragging && m_lyric_browse_index >= 0)
+    {
+        const bool sync = player.GetConfig().GetLyricSeekSync();
+        const Color line_color = sync ? Theme::kAccent : Theme::kSeparator;
+        r.DrawLine(x, view_center, x + 40, view_center, line_color);
+        r.DrawLine(x + width - 40, view_center, x + width, view_center, line_color);
+
+        if (sync && m_lyric_browse_index < static_cast<int>(lines.size()))
+        {
+            CPlayTime target{ lines[m_lyric_browse_index].time_start };
+            r.DrawText(target.toString(false), x + width - 4, view_center - 26,
+                       CRenderer::FS_SMALL, Theme::kAccent, CRenderer::ALIGN_RIGHT);
+        }
+    }
 
     if (player.GetLyricOffset() != 0)
     {
@@ -784,22 +1081,27 @@ void CPlayerScreen::Draw(ScreenContext& ctx)
         return;
     }
 
-    const int content_top = Theme::kHeaderHeight;
-    const int content_height = Theme::kScreenHeight - Theme::kHeaderHeight - Theme::kFooterHeight;
-
     // 左侧：封面 + 曲目信息 + 走带按钮 + 进度条；右侧：歌词或频谱
-    const int right_x = kLeftX + kLeftWidth + Theme::kPadding * 2;
-    const int right_width = Theme::kScreenWidth - right_x - Theme::kPadding * 2;
-
     DrawCover(ctx);
     DrawSongInfo(ctx);
     DrawTransportButtons(ctx);
     DrawProgressBar(ctx);
 
+    // 触摸判定用的是这一帧记下的矩形，下一帧才生效；首帧为空不会误命中
+    m_lyric_rect = Rect{ kRightX, kRightY, kRightWidth, kRightHeight };
+
     if (m_view == VIEW_LYRIC)
-        DrawLyricView(ctx, right_x, content_top + 16, right_width, content_height - 32);
+    {
+        DrawLyricView(ctx, kRightX, kRightY, kRightWidth, kRightHeight);
+        DrawLyricTools(ctx);
+    }
     else
-        DrawSpectrumView(ctx, right_x, content_top + 16, right_width, content_height - 32);
+    {
+        DrawSpectrumView(ctx, kRightX, kRightY, kRightWidth, kRightHeight);
+    }
+
+    if (FaceButtonsVisible(ctx))
+        DrawFaceButtons(ctx);
 
     DrawVolumeOverlay(ctx);
 }

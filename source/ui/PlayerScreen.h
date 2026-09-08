@@ -1,5 +1,6 @@
 #pragma once
 #include "Screen.h"
+#include "Theme.h"
 #include "../core/LrcParser.h"
 
 #include <string>
@@ -30,22 +31,37 @@ public:
     const char* GetButtonHints() const override;
 
 private:
-    // 触摸能按到的按钮。按十字排布，位置与方向键一一对应：
-    // 上=播放/暂停，左=上一曲，右=下一曲，下=停止。
-    // 这样屏幕上的按钮本身就是键位说明，底栏不用再写方向键指引。
+    // 触摸能按到的按钮。
+    //
+    // 左下角的四个按十字排布，位置与方向键一一对应（上=播放/暂停，左=上一曲，
+    // 右=下一曲，下=停止）；右下角的四个按 ABXY 的实际排布摆成菱形。
+    // 屏幕上的布局本身就是键位说明，用户不必先读底栏再去找键。
     enum HitButton
     {
         HIT_NONE = 0,
         HIT_PREV,
         HIT_PLAY,
         HIT_NEXT,
-        HIT_STOP
+        HIT_STOP,
+        HIT_FACE_A,
+        HIT_FACE_B,
+        HIT_FACE_X,
+        HIT_FACE_Y,
+        HIT_TOOL_DOWNLOAD,      // 歌词区右上角：下载歌词/封面
+        HIT_TOOL_SYNC           // 歌词区右上角：拖歌词是否带着进度走
     };
 
     void DrawCover(ScreenContext& ctx);
     void DrawSongInfo(ScreenContext& ctx);
     void DrawProgressBar(ScreenContext& ctx);
     void DrawTransportButtons(ScreenContext& ctx);
+    // 右下角的 ABXY 触摸键。只在单栏歌词/频谱下画：双栏时右半边是译文，会挡住。
+    void DrawFaceButtons(ScreenContext& ctx);
+    // 歌词区右上角的两个小按钮
+    void DrawLyricTools(ScreenContext& ctx);
+    bool FaceButtonsVisible(ScreenContext& ctx) const;
+    // 当前是否按双栏排版显示歌词（要同时满足：设置开了、显示译文、这首歌真的有译文）
+    bool IsTwoColumnLyric(ScreenContext& ctx) const;
     void DrawLyricView(ScreenContext& ctx, int x, int y, int width, int height);
     // 画一行原文（当前行且有分词信息时带逐字高亮）。
     // 抽出来是因为单栏和双栏都要用，只是给的横向范围不同。
@@ -57,6 +73,10 @@ private:
     void DrawCoverFullscreen(ScreenContext& ctx);
 
     void HandleTouch(ScreenContext& ctx);
+    // 手指在歌词区上下拖动：翻看歌词。返回 true 表示这一帧的触摸已被歌词区吃掉。
+    bool HandleLyricDrag(ScreenContext& ctx, double delta_seconds);
+    // 按下某个 ABXY 触摸键等价于按下对应的手柄键
+    void ActivateFaceButton(ScreenContext& ctx, HitButton button);
     // 进度条上要显示的位置：正常是播放位置，拖动时是拖到的位置
     int  GetDisplayPosition(ScreenContext& ctx) const;
 
@@ -78,4 +98,13 @@ private:
     bool m_touch_seeking{};                 // 手指按在进度条上拖动中
     int  m_touch_seek_ms{};
     HitButton m_pressed_button{ HIT_NONE }; // 当前被手指按住的按钮，用于按下态高亮
+
+    // ---- 歌词浏览 ----
+    // 默认只是翻看：松手几秒后自己滑回当前播放的那句。
+    // 打开"同步"后改成松手即定位，把歌曲进度也带过去。
+    bool   m_lyric_dragging{};
+    double m_lyric_browse_offset{};         // 相对跟随位置的像素偏移，向下拖为正
+    double m_lyric_browse_hold{};           // 松手后还要保持多久才滑回去（秒）
+    int    m_lyric_browse_index{ -1 };      // 上一帧算出的、落在视图中心的那句
+    Rect   m_lyric_rect{};                  // 上一帧歌词区的范围，供触摸判定用
 };

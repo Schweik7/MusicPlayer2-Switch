@@ -3,30 +3,68 @@
 #include "SystemClock.h"
 #include "core/FileUtil.h"
 #include "core/MediaScanner.h"
+#include "ui/Theme.h"
 
 #include <switch.h>
 #include <SDL2/SDL.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <string>
+#include <vector>
+
+void CApp::BootStage(const char* name)
+{
+    const uint32_t now = SDL_GetTicks();
+    m_boot_timings.push_back(BootStageTime{ name, now - m_boot_last_ticks });
+    m_boot_last_ticks = now;
+    Diag::Logf("启动阶段 %-12s %u 毫秒", name, m_boot_timings.back().ms);
+
+    // 渲染器一旦就绪就把进度画出来。在此之前只能记时间，画不了东西。
+    if (!m_renderer.IsReady())
+        return;
+    m_renderer.BeginFrame();
+    m_renderer.Clear(Theme::kBackground);
+    m_renderer.DrawText("MusicPlayer2", Theme::kScreenWidth / 2, Theme::kScreenHeight / 2 - 60,
+                        CRenderer::FS_LARGE, Theme::kText, CRenderer::ALIGN_CENTER);
+    m_renderer.DrawText(std::string("正在启动 · ") + name, Theme::kScreenWidth / 2,
+                        Theme::kScreenHeight / 2 + 10, CRenderer::FS_SMALL, Theme::kTextDim,
+                        CRenderer::ALIGN_CENTER);
+    m_renderer.EndFrame();
+}
 
 bool CApp::Init()
 {
+    m_boot_start_ticks = SDL_GetTicks();
+    m_boot_last_ticks = m_boot_start_ticks;
+
     // romfs 用来放图标等资源；没有 romfs 也能跑，所以失败不算致命
     romfsInit();
     SystemClock::Init();
+    BootStage("romfs");
 
-    if (!m_renderer.Init())
+    // 用户可以往数据目录里放一个 font.ttf 换掉界面字体（系统字体仍作兜底）。
+    // 不打包进 NRO：漂亮的中文字体动辄二三十兆，而 NRO 是整个读进内存才启动的，
+    // 打进去等于给每次冷启动加上几秒黑屏，而这恰恰是想避免的事。
+    std::string custom_font = FileUtil::Combine(CPlayer::GetDataDir(), "font.ttf");
+    if (!FileUtil::Exists(custom_font))
+        custom_font.clear();
+
+    if (!m_renderer.Init(custom_font))
     {
         m_last_error = m_renderer.GetLastError();
         return false;
     }
+    BootStage(custom_font.empty() ? "图形与字体" : "图形与字体(自带)");
+
     Diag::ProbeFont(m_renderer);
     if (!m_player.Init())
     {
         m_last_error = m_player.GetLastError();
         return false;
     }
+    BootStage("音频与网络");
+
     Diag::ProbeNetwork(m_player.GetHttpClient());
 
     m_input.Init();
@@ -46,15 +84,21 @@ bool CApp::Init()
 
     m_updater.Init(&m_player.GetHttpClient(), m_self_path);
     m_settings_screen.SetUpdater(&m_updater);
+    m_settings_screen.SetApp(this);
 
     m_ctx.player = &m_player;
     m_ctx.renderer = &m_renderer;
     m_ctx.input = &m_input;
+    BootStage("子系统");
 
     RestoreLastSession();
+    BootStage("恢复上次会话");
 
     m_current = SCREEN_PLAYER;
     m_screens[m_current]->OnEnter(m_ctx);
+
+    m_boot_timings.push_back(BootStageTime{ "合计", SDL_GetTicks() - m_boot_start_ticks });
+    Diag::Logf("启动合计 %u 毫秒", m_boot_timings.back().ms);
     return true;
 }
 
@@ -284,9 +328,31 @@ void CApp::DrawFooter()
     m_renderer.FillRect(0, y, Theme::kScreenWidth, Theme::kFooterHeight, Theme::kPanel);
     m_renderer.DrawLine(0, y, Theme::kScreenWidth, y, Theme::kSeparator);
 
-    m_renderer.DrawTextEllipsis(m_screens[m_current]->GetButtonHints(), Theme::kPadding, y + 20,
-                                Theme::kScreenWidth - Theme::kPadding * 2,
-                                CRenderer::FS_SMALL, Theme::kTextDim);
+    // 提示串用 '|' 分段，这里把每段放进等宽的一格里居中。
+    // 原来是一整行左对齐，长短不一的几段挤在左边、右边空一大片，很难扫读。
+    const std::string hints = m_screens[m_current]->GetButtonHints();
+    std::vector<std::string> parts;
+    for (size_t start = 0; start <= hints.size(); )
+    {
+        size_t sep = hints.find('|', start);
+        if (sep == std::string::npos)
+            sep = hints.size();
+        std::string part = hints.substr(start, sep - start);
+        if (!part.empty())
+            parts.push_back(part);
+        start = sep + 1;
+    }
+    if (parts.empty())
+        return;
+
+    const int usable = Theme::kScreenWidth - Theme::kPadding * 2;
+    const int slot = usable / static_cast<int>(parts.size());
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        const int center = Theme::kPadding + static_cast<int>(i) * slot + slot / 2;
+        m_renderer.DrawTextEllipsis(parts[i], center, y + 20, slot - 8, CRenderer::FS_SMALL,
+                                    Theme::kTextDim, CRenderer::ALIGN_CENTER);
+    }
 }
 
 void CApp::DrawToast(double delta_seconds)
@@ -361,6 +427,7 @@ void CApp::Run()
         if (m_ctx.request_exit)
             m_running = false;
 
+        m_renderer.AdvanceTime(delta_seconds);
         m_renderer.BeginFrame();
         m_renderer.Clear(Theme::kBackground);
         m_screens[m_current]->Draw(m_ctx);

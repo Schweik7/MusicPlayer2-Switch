@@ -1,4 +1,5 @@
 #include "AudioEngine.h"
+#include "../core/AudioDuration.h"
 #include "../core/FileUtil.h"
 
 #include <SDL2/SDL.h>
@@ -173,12 +174,16 @@ bool CAudioEngine::OpenWithMixer(const std::string& file_path)
 
     m_file_path = file_path;
     m_length_ms = 0;
-// Mix_MusicDuration 是 SDL_mixer 2.6.0 才有的接口；老版本只能等播放结束后反推时长
+// Mix_MusicDuration 是 SDL_mixer 2.6.0 才有的接口；devkitPro 带的是 2.0.4，没有它
 #if defined(SDL_MIXER_VERSION_ATLEAST) && SDL_MIXER_VERSION_ATLEAST(2, 6, 0)
     double duration = Mix_MusicDuration(m_music);
     if (duration > 0.0)
         m_length_ms = static_cast<int>(duration * 1000.0);
 #endif
+    // 拿不到就自己从文件头算。不这么做的话 MP3 的进度条右侧永远是 "-:--"，
+    // 而且没有总长度就无法按比例定位，触摸拖动进度条也用不了。
+    if (m_length_ms <= 0)
+        m_length_ms = AudioDuration::Estimate(file_path);
 
     if (Mix_PlayMusic(m_music, 1) != 0)      // 循环由上层的播放模式决定，这里只播一遍
     {

@@ -31,7 +31,7 @@ void CPlaylistScreen::OnEnter(ScreenContext& ctx)
 
 const char* CPlaylistScreen::GetButtonHints() const
 {
-    return "A 播放选中项   B 返回   L/R 翻页   + 文件浏览";
+    return "A 播放选中项|B 返回|L/R 翻页|＋ 设置";
 }
 
 bool CPlaylistScreen::UpdateTouchScroll(ScreenContext& ctx, int count, int visible,
