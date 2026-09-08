@@ -5,6 +5,9 @@
 桌面版基于 MFC，界面层和音频层无法交叉编译到 Switch，因此这两层是重写的；
 播放列表、歌词解析、在线下载等与平台无关的逻辑与桌面版保持一致。
 
+本仓库只放移植版。它不依赖桌面版的任何源文件，所以从上游拆出来单独维护——
+上游是一个 MFC 的 Windows 工程，把 devkitPro 工具链塞进去对双方都是负担。
+
 > 想改代码？先看 [系统架构](docs/ARCHITECTURE.md) 和 [开发指南](docs/DEVELOPMENT.md)。
 
 ![播放界面](docs/images/screenshot1.jpg)
@@ -225,7 +228,14 @@ WAV 的字节率、Ogg 末页的 granule）。devkitPro 带的 SDL_mixer 是 2.0
 
 ---
 
+## 许可证
+
+GPL-3.0，与上游一致。移植版是 [MusicPlayer2](https://github.com/zhongyang219/MusicPlayer2)
+的衍生作品，见 [LICENSE](LICENSE)。
+
 ## 致谢
 
 - 上游项目 [zhongyang219/MusicPlayer2](https://github.com/zhongyang219/MusicPlayer2)
 - [devkitPro](https://devkitpro.org/) 与 libnx
+- [GBAStation](https://github.com/beiklive/GBAStation) —— 自动更新替换不掉自身那个坑，
+  是照着它的更新器才定位到"挂着 romfs 时 NRO 文件被按住"这一条
