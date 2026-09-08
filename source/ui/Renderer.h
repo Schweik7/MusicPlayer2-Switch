@@ -55,6 +55,10 @@ public:
     void FillRect(int x, int y, int w, int h, Color color);
     void DrawRect(int x, int y, int w, int h, Color color);
     void FillRoundRect(int x, int y, int w, int h, int radius, Color color);
+    // 圆角矩形的描边。画法是"填一个大的，再用背景色填一个小的挖空"，
+    // 所以要把背景色传进来——图标画在按钮上，按钮底色是会变的（按下、选中）。
+    void DrawRoundRect(int x, int y, int w, int h, int radius, int thickness, Color color,
+                       Color background);
     // 走带按钮的图标用三角形拼出来，不依赖系统字体里是否存在 ▶ / ⏸ 这些符号
     void FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, Color color);
     void DrawLine(int x1, int y1, int x2, int y2, Color color);

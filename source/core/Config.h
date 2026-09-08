@@ -110,6 +110,11 @@ public:
     int  GetLyricOffset() const { return GetInt("lyric_offset", 0); }
     void SetLyricOffset(int ms) { SetInt("lyric_offset", ms); }
 
+    // 是否开放歌词时间偏移的调整。默认关：绝大多数歌词的时间轴是准的，
+    // 而它占着 B 键当修饰键——关掉之后 B 才能腾出来做别的（连按两次退出）。
+    bool GetLyricOffsetEnabled() const { return GetBool("lyric_offset_enabled", false); }
+    void SetLyricOffsetEnabled(bool b) { SetBool("lyric_offset_enabled", b); }
+
     // 掌机模式下降低刷新率以省电
     bool GetPowerSaving() const { return GetBool("power_saving", true); }
     void SetPowerSaving(bool b) { SetBool("power_saving", b); }

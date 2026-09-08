@@ -64,6 +64,9 @@ public:
     const CLrcParser& GetLyrics() const { return m_lyrics; }
     bool HasLyrics() const { return !m_lyrics.IsEmpty(); }
     void AdjustLyricOffset(int delta_ms);
+    // 直接设定偏移量。关掉这个功能时用它归零——留着一个改不了的偏移量在那儿
+    // 继续生效，用户会莫名其妙。
+    void SetLyricOffset(int ms);
     int  GetLyricOffset() const { return m_lyrics.GetUserOffset(); }
 
     CAudioEngine& GetAudio() { return m_audio; }

@@ -157,6 +157,20 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_LYRIC_SYNC].value = config.GetLyricSeekSync() ? "开启" : "关闭（仅翻看）";
     m_rows[ITEM_LYRIC_SYNC].actionable = true;
 
+    m_rows[ITEM_LYRIC_OFFSET].label = "歌词时间偏移";
+    if (!config.GetLyricOffsetEnabled())
+    {
+        m_rows[ITEM_LYRIC_OFFSET].value = "关闭";
+    }
+    else
+    {
+        char text[48];
+        std::snprintf(text, sizeof(text), "开启 · 按住 B + 方向键（%+.1f 秒）",
+                      config.GetLyricOffset() / 1000.0);
+        m_rows[ITEM_LYRIC_OFFSET].value = text;
+    }
+    m_rows[ITEM_LYRIC_OFFSET].actionable = true;
+
     m_rows[ITEM_LYRIC_BACKGROUND].label = "歌词区背景";
     m_rows[ITEM_LYRIC_BACKGROUND].value = BackgroundText(config.GetLyricBackground());
     m_rows[ITEM_LYRIC_BACKGROUND].actionable = true;
@@ -247,6 +261,22 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         config.SetLyricSeekSync(sync);
         ctx.ShowToast(sync ? "拖动歌词将同时改变播放进度"
                            : "拖动歌词只是翻看，松手后自动归位");
+        break;
+    }
+    case ITEM_LYRIC_OFFSET:
+    {
+        const bool enabled = !config.GetLyricOffsetEnabled();
+        config.SetLyricOffsetEnabled(enabled);
+        if (!enabled)
+        {
+            // 关掉就归零。留着一个改不了的偏移量在那儿生效，用户会莫名其妙。
+            player.SetLyricOffset(0);
+            ctx.ShowToast("歌词时间偏移已关闭并归零");
+        }
+        else
+        {
+            ctx.ShowToast("歌词时间偏移：播放界面按住 B + 方向键左右调整");
+        }
         break;
     }
     case ITEM_LYRIC_BACKGROUND:

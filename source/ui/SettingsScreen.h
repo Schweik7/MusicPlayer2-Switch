@@ -32,6 +32,7 @@ private:
         ITEM_TRANSLATION,
         ITEM_LYRIC_LAYOUT,
         ITEM_LYRIC_SYNC,
+        ITEM_LYRIC_OFFSET,
         ITEM_LYRIC_BACKGROUND,
         ITEM_HIDE_HINTS,
         ITEM_EMBED,

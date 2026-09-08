@@ -407,6 +407,12 @@ const char* CPlayer::GetRepeatModeName(CConfig::RepeatMode mode)
     }
 }
 
+void CPlayer::SetLyricOffset(int ms)
+{
+    m_lyrics.SetUserOffset(ms);
+    m_config.SetLyricOffset(m_lyrics.GetUserOffset());
+}
+
 void CPlayer::AdjustLyricOffset(int delta_ms)
 {
     m_lyrics.SetUserOffset(m_lyrics.GetUserOffset() + delta_ms);

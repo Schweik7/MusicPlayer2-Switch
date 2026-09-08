@@ -92,7 +92,7 @@ private:
     void DrawLyricTools(ScreenContext& ctx);
     // 播放模式的图标。五种模式要在 40 像素里分得清，所以用图形拼——
     // 两个汉字在这个尺寸下挤成一团，一个汉字又分不出"单曲循环"和"单曲播放"。
-    void DrawRepeatIcon(ScreenContext& ctx, int cx, int cy, Color color);
+    void DrawRepeatIcon(ScreenContext& ctx, int cx, int cy, Color color, Color background);
     // 歌词区左上角的左摇杆十字：上下音量、左右逐秒进退，中心显示音量。
     // 和左下角的方向键十字、右下角的 ABXY 菱形并列，是第三个自带说明的操作区。
     void DrawStickCross(ScreenContext& ctx);
@@ -158,6 +158,10 @@ private:
     double m_lyric_browse_offset{};         // 相对跟随位置的像素偏移，向下拖为正
     double m_lyric_browse_hold{};           // 松手后还要保持多久才滑回去（秒）
     int    m_lyric_browse_index{ -1 };      // 上一帧算出的、落在视图中心的那句
+    // 连按两次 B 退出。第一次只是"举手"，倒计时内再按一次才真退——
+    // 单按一下就退太容易误触，而播放界面上 B 本来没有返回的含义。
+    double m_exit_prompt_timer{};
+
     Rect   m_lyric_rect{};                  // 上一帧歌词区的范围，供触摸判定用
     Layout m_layout{};                      // 每帧开头算一次，Update 和 Draw 共用
 };

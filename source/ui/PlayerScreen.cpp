@@ -230,7 +230,8 @@ const char* CPlayerScreen::GetButtonHints() const
     // 用 '|' 分段，底栏会按段均匀铺开。
     // 左摇杆的功能已经由歌词区左上角那个十字画出来了，这里不再重复。
     // 走带控制同理（左下角十字），ABXY 同理（右下角菱形）。
-    return "ZL/ZR ±5秒|右摇杆↑↓ 翻歌词|L 封面大小|R 单栏/双栏|LS 触摸|RS 下载|− 列表|＋ 设置";
+    return "ZL/ZR ±5秒|右摇杆↑↓ 翻歌词|L 封面大小|R 单栏/双栏|LS 触摸|RS 下载|"
+           "B×2 退出|− 列表|＋ 设置";
 }
 
 void CPlayerScreen::GoBack(ScreenContext& ctx)
@@ -398,21 +399,40 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         m_seeking = false;
     }
 
-    // 按住 B + 方向键左右：调整歌词偏移。
+    // 按住 B + 方向键左右：调整歌词偏移。默认关闭，见设置里的"歌词时间偏移"。
     // 这里必须用只认方向键的 BTN_DPAD_*，因为摇杆左右已经分给逐秒快进退了
-    if (input.IsHeld(CInputMap::BTN_B))
+    const bool offset_enabled = player.GetConfig().GetLyricOffsetEnabled();
+    if (offset_enabled && input.IsHeld(CInputMap::BTN_B))
     {
         if (input.IsRepeat(CInputMap::BTN_DPAD_RIGHT))
         {
             player.AdjustLyricOffset(500);
             ctx.ShowToast("歌词延后 0.5 秒");
+            m_exit_prompt_timer = 0.0;      // 这次 B 是当修饰键用的，不算退出意图
         }
         if (input.IsRepeat(CInputMap::BTN_DPAD_LEFT))
         {
             player.AdjustLyricOffset(-500);
             ctx.ShowToast("歌词提前 0.5 秒");
+            m_exit_prompt_timer = 0.0;
         }
     }
+
+    // 连按两次 B 退出程序。播放界面是根界面，B 在这里本来没有返回的含义。
+    if (input.IsDown(CInputMap::BTN_B))
+    {
+        if (m_exit_prompt_timer > 0.0)
+        {
+            ctx.request_exit = true;
+        }
+        else
+        {
+            m_exit_prompt_timer = 1.5;
+            ctx.ShowToast("再按一次 B 退出");
+        }
+    }
+    if (m_exit_prompt_timer > 0.0)
+        m_exit_prompt_timer -= delta_seconds;
 
     // 右摇杆上下翻看歌词，和手指拖动是同一件事的按键版本。
     // 右摇杆左右已经分给拖进度了，上下正好空着。
@@ -480,9 +500,16 @@ void CPlayerScreen::ActivateFaceButton(ScreenContext& ctx, HitButton button)
         ctx.ShowToast(CPlayer::GetRepeatModeName(player.GetRepeatMode()));
         break;
     case HIT_FACE_B:
-        // B 在这个界面上只作修饰键用，单点它没有对应动作，
-        // 那就把它是干什么用的说出来，免得点了没反应像是坏了
-        ctx.ShowToast("按住 B + 方向键 ← → 调整歌词偏移");
+        // 和按实体 B 键走同一条路：点两次才退出
+        if (m_exit_prompt_timer > 0.0)
+        {
+            ctx.request_exit = true;
+        }
+        else
+        {
+            m_exit_prompt_timer = 1.5;
+            ctx.ShowToast("再点一次 B 退出");
+        }
         break;
     default:
         break;
@@ -870,13 +897,16 @@ void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
     }
 }
 
-void CPlayerScreen::DrawRepeatIcon(ScreenContext& ctx, int cx, int cy, Color color)
+void CPlayerScreen::DrawRepeatIcon(ScreenContext& ctx, int cx, int cy, Color color,
+                                   Color background)
 {
     CRenderer& r = *ctx.renderer;
 
     // 画一个带箭头的循环框。列表循环和单曲循环共用它，区别只在中间那个 1。
+    // 用圆角描边而不是直角矩形：同一屏上的按钮、面板都是圆角的，
+    // 直角框夹在中间显得生硬。
     auto draw_loop = [&]() {
-        r.DrawRect(cx - 11, cy - 8, 22, 16, color);
+        r.DrawRoundRect(cx - 11, cy - 8, 22, 16, 5, 2, color, background);
         r.FillTriangle(cx + 5, cy - 12, cx + 5, cy - 4, cx + 13, cy - 8, color);
     };
 
@@ -956,7 +986,7 @@ void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
         }
         else if (tool.id == HIT_TOOL_REPEAT)
         {
-            DrawRepeatIcon(ctx, cx, cy, icon);
+            DrawRepeatIcon(ctx, cx, cy, icon, background);
         }
         else if (tool.id == HIT_TOOL_LAYOUT)
         {
@@ -1081,7 +1111,7 @@ void CPlayerScreen::DrawFaceButtons(ScreenContext& ctx)
         { kBtnFaceX, HIT_FACE_X, "X", "视图" },
         { kBtnFaceY, HIT_FACE_Y, "Y", "模式" },
         { kBtnFaceA, HIT_FACE_A, "A", playing ? "暂停" : "播放" },
-        { kBtnFaceB, HIT_FACE_B, "B", "偏移" },
+        { kBtnFaceB, HIT_FACE_B, "B", "退出" },
     };
 
     for (const FaceDef& face : faces)

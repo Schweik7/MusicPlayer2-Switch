@@ -229,6 +229,17 @@ void CRenderer::DrawRect(int x, int y, int w, int h, Color color)
     SDL_RenderDrawRect(m_renderer, &rect);
 }
 
+void CRenderer::DrawRoundRect(int x, int y, int w, int h, int radius, int thickness,
+                              Color color, Color background)
+{
+    if (w <= 0 || h <= 0 || thickness <= 0)
+        return;
+    FillRoundRect(x, y, w, h, radius, color);
+    // 内圈的圆角要相应收小，否则挖出来的洞是方的，边角会显得厚一块
+    FillRoundRect(x + thickness, y + thickness, w - thickness * 2, h - thickness * 2,
+                  std::max(0, radius - thickness), background);
+}
+
 void CRenderer::FillRoundRect(int x, int y, int w, int h, int radius, Color color)
 {
     if (w <= 0 || h <= 0)
