@@ -232,6 +232,21 @@ void CRenderer::FillRoundRect(int x, int y, int w, int h, int radius, Color colo
     }
 }
 
+void CRenderer::FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, Color color)
+{
+    SDL_Color c = ToSdlColor(color);
+    SDL_Vertex verts[3];
+    verts[0].position = SDL_FPoint{ static_cast<float>(x1), static_cast<float>(y1) };
+    verts[1].position = SDL_FPoint{ static_cast<float>(x2), static_cast<float>(y2) };
+    verts[2].position = SDL_FPoint{ static_cast<float>(x3), static_cast<float>(y3) };
+    for (SDL_Vertex& v : verts)
+    {
+        v.color = c;
+        v.tex_coord = SDL_FPoint{ 0.0f, 0.0f };
+    }
+    SDL_RenderGeometry(m_renderer, nullptr, verts, 3, nullptr, 0);
+}
+
 void CRenderer::DrawLine(int x1, int y1, int x2, int y2, Color color)
 {
     SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
@@ -269,6 +284,30 @@ TTF_Font* CRenderer::PickFont(FontSize size, char32_t code_point) const
     }
     // 都没有就用第一个字体画出“豆腐块”，至少能看出这里有字
     return chain.fonts.front();
+}
+
+int CRenderer::GetFontChainSize(FontSize size) const
+{
+    return static_cast<int>(m_font_chains[size].fonts.size());
+}
+
+int CRenderer::FindFontIndexForCodePoint(FontSize size, char32_t code_point) const
+{
+    // 和 PickFont 的查找逻辑一致，区别是找不到时返回 -1 而不是退回第一个字体，
+    // 这样诊断输出才能区分“真的有这个字形”和“画成了豆腐块”。
+    const FontChain& chain = m_font_chains[size];
+    for (size_t i = 0; i < chain.fonts.size(); ++i)
+    {
+#if defined(SDL_TTF_VERSION_ATLEAST) && SDL_TTF_VERSION_ATLEAST(2, 0, 18)
+        if (TTF_GlyphIsProvided32(chain.fonts[i], static_cast<Uint32>(code_point)))
+            return static_cast<int>(i);
+#else
+        if (code_point <= 0xFFFF
+            && TTF_GlyphIsProvided(chain.fonts[i], static_cast<Uint16>(code_point)))
+            return static_cast<int>(i);
+#endif
+    }
+    return -1;
 }
 
 void CRenderer::SplitRuns(const std::string& utf8, FontSize size, std::vector<TextRun>& runs) const

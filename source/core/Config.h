@@ -60,6 +60,14 @@ public:
     bool GetPowerSaving() const { return GetBool("power_saving", true); }
     void SetPowerSaving(bool b) { SetBool("power_saving", b); }
 
+    // 触摸操作开关。放游戏机上容易误触，所以做成可关掉的
+    bool GetTouchEnabled() const { return GetBool("touch_enabled", true); }
+    void SetTouchEnabled(bool b) { SetBool("touch_enabled", b); }
+
+    // 空闲多少秒后自动调暗屏幕；0 表示不自动调暗
+    int  GetDimTimeout() const { return GetInt("dim_timeout", 60); }
+    void SetDimTimeout(int seconds) { SetInt("dim_timeout", seconds < 0 ? 0 : seconds); }
+
 private:
     std::map<std::string, std::string> m_values;
 };

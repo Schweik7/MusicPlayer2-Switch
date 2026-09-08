@@ -11,6 +11,37 @@ namespace
 {
     const int kSeekStep = 5000;             // ZL/ZR 快进快退步长（毫秒）
     const int kVolumeStep = 5;
+
+    // 左栏布局。逻辑分辨率固定 1280x720，所以直接写成常量，
+    // 绘制和触摸命中判定共用同一份，不会画一套、点另一套。
+    const int kLeftX = 48;
+    const int kLeftWidth = 260;
+
+    const Rect kCoverRect{ kLeftX, 100, kLeftWidth, kLeftWidth };
+
+    const int kInfoY = 378;                 // 标题基线
+    const int kCounterY = 490;              // “第 N 首 / 共 M 首”
+
+    // 走带按钮：上一曲 / 播放暂停 / 下一曲，一排三个居中
+    const int kButtonY = 512;
+    const int kButtonW = 64;
+    const int kButtonH = 52;
+    const int kButtonGap = 20;
+    const int kButtonsX = kLeftX + (kLeftWidth - (kButtonW * 3 + kButtonGap * 2)) / 2;
+
+    const Rect kBtnPrev{ kButtonsX, kButtonY, kButtonW, kButtonH };
+    const Rect kBtnPlay{ kButtonsX + kButtonW + kButtonGap, kButtonY, kButtonW, kButtonH };
+    const Rect kBtnNext{ kButtonsX + (kButtonW + kButtonGap) * 2, kButtonY, kButtonW, kButtonH };
+
+    const int kProgressY = 596;
+    const int kProgressH = 6;
+    // 触摸热区比 6 像素的可视进度条大得多——手指点不了那么准
+    const Rect kProgressHit{ kLeftX - 12, kProgressY - 22, kLeftWidth + 24, 46 };
+
+    double Clamp01(double value)
+    {
+        return std::max(0.0, std::min(1.0, value));
+    }
 }
 
 void CPlayerScreen::ReleaseResources(ScreenContext& ctx)
@@ -43,8 +74,8 @@ void CPlayerScreen::OnEnter(ScreenContext& ctx)
 
 const char* CPlayerScreen::GetButtonHints() const
 {
-    return "A 播放/暂停   L/R 上下曲   ZL/ZR 快退/快进   X 切换视图   Y 播放模式   "
-           "B+Y 在线下载   - 播放列表";
+    return "方向键 ←→ 上下曲  ↑ 播放/暂停  ↓ 停止   ZL/ZR 快退/快进   摇杆↑↓ 音量   "
+           "X 视图   Y 模式   B+Y 下载   - 列表   + 浏览   B+ + 设置";
 }
 
 void CPlayerScreen::RefreshCover(ScreenContext& ctx)
@@ -95,22 +126,41 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
 
     if (input.IsDown(CInputMap::BTN_MINUS))
         ctx.next_screen = SCREEN_PLAYLIST;
-    if (input.IsDown(CInputMap::BTN_PLUS))
+    if (input.IsDown(CInputMap::BTN_PLUS) && !input.IsHeld(CInputMap::BTN_B))
         ctx.next_screen = SCREEN_BROWSER;
 
-    // 方向键上下调音量
-    if (input.IsRepeat(CInputMap::BTN_UP))
+    // 方向键：经典的走带控制。
+    // 按住 B 时方向键左右是调歌词偏移，那种情况下要让开（见下面的 B 组合键分支）。
+    if (!input.IsHeld(CInputMap::BTN_B))
+    {
+        if (input.IsDown(CInputMap::BTN_DPAD_LEFT))
+            player.PlayPrevious();
+        if (input.IsDown(CInputMap::BTN_DPAD_RIGHT))
+            player.PlayNext(true);
+        if (input.IsDown(CInputMap::BTN_DPAD_UP))
+            player.PlayOrPause();
+        if (input.IsDown(CInputMap::BTN_DPAD_DOWN))
+        {
+            player.Stop();
+            ctx.ShowToast("已停止");
+        }
+    }
+
+    // 音量挪到左摇杆上下：方向键已经让给走带控制了
+    if (input.IsRepeat(CInputMap::BTN_STICK_UP))
     {
         player.AdjustVolume(kVolumeStep);
         m_volume_overlay_timer = 1.5;
     }
-    if (input.IsRepeat(CInputMap::BTN_DOWN))
+    if (input.IsRepeat(CInputMap::BTN_STICK_DOWN))
     {
         player.AdjustVolume(-kVolumeStep);
         m_volume_overlay_timer = 1.5;
     }
     if (m_volume_overlay_timer > 0.0)
         m_volume_overlay_timer -= delta_seconds;
+
+    HandleTouch(ctx);
 
     // 右摇杆左右拖动进度：按住时按比例累计，松开时一次性定位，
     // 避免每帧都调用一次 Mix_SetMusicPosition
@@ -148,6 +198,8 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
             else
                 ctx.next_screen = SCREEN_DOWNLOAD;
         }
+        if (input.IsDown(CInputMap::BTN_PLUS))
+            ctx.next_screen = SCREEN_SETTINGS;
     }
 
     // 歌词滚动的平滑过渡
@@ -161,9 +213,71 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         m_lyric_scroll = std::max(0.0, m_lyric_scroll - delta_seconds * 5.0);
 }
 
-void CPlayerScreen::DrawCover(ScreenContext& ctx, int x, int y, int size)
+void CPlayerScreen::HandleTouch(ScreenContext& ctx)
+{
+    const CInputMap::TouchState& touch = ctx.input->GetTouch();
+    CPlayer& player = *ctx.player;
+
+    // ---- 进度条拖动 ----
+    if (touch.pressed && kProgressHit.Contains(touch.x, touch.y) && player.GetLength() > 0)
+        m_touch_seeking = true;
+
+    if (m_touch_seeking)
+    {
+        double ratio = Clamp01(static_cast<double>(touch.x - kLeftX) / kLeftWidth);
+        m_touch_seek_ms = static_cast<int>(player.GetLength() * ratio);
+        if (!touch.touching)
+        {
+            // 松手才真正定位：拖动过程中反复 seek 会让解码器不停地重新缓冲
+            player.SeekTo(m_touch_seek_ms);
+            m_touch_seeking = false;
+        }
+        m_pressed_button = HIT_NONE;
+        return;
+    }
+
+    // ---- 按钮 ----
+    m_pressed_button = HIT_NONE;
+    if (touch.touching)
+    {
+        if (kBtnPrev.Contains(touch.x, touch.y))      m_pressed_button = HIT_PREV;
+        else if (kBtnPlay.Contains(touch.x, touch.y)) m_pressed_button = HIT_PLAY;
+        else if (kBtnNext.Contains(touch.x, touch.y)) m_pressed_button = HIT_NEXT;
+    }
+
+    // 划动不算点击，否则在屏幕上滑一下会误触发
+    if (!touch.released || touch.IsDrag())
+        return;
+
+    if (kBtnPrev.Contains(touch.x, touch.y))
+        player.PlayPrevious();
+    else if (kBtnPlay.Contains(touch.x, touch.y))
+        player.PlayOrPause();
+    else if (kBtnNext.Contains(touch.x, touch.y))
+        player.PlayNext(true);
+    else if (kCoverRect.Contains(touch.x, touch.y))
+        m_view = static_cast<ViewMode>((m_view + 1) % VIEW_COUNT);
+}
+
+int CPlayerScreen::GetDisplayPosition(ScreenContext& ctx) const
+{
+    CPlayer& player = *ctx.player;
+    int length = player.GetLength();
+
+    if (m_touch_seeking)
+        return m_touch_seek_ms;
+
+    // 右摇杆拖动时预览拖动后的位置
+    int preview = player.GetPosition() + static_cast<int>(m_seek_accumulator);
+    if (length > 0)
+        preview = std::min(preview, length);
+    return std::max(0, preview);
+}
+
+void CPlayerScreen::DrawCover(ScreenContext& ctx)
 {
     CRenderer& r = *ctx.renderer;
+    const int x = kCoverRect.x, y = kCoverRect.y, size = kCoverRect.w;
 
     if (m_cover != nullptr)
     {
@@ -179,55 +293,122 @@ void CPlayerScreen::DrawCover(ScreenContext& ctx, int x, int y, int size)
     r.DrawRect(x, y, size, size, Theme::kSeparator);
 }
 
-void CPlayerScreen::DrawSongInfo(ScreenContext& ctx, int x, int y, int width)
+void CPlayerScreen::DrawSongInfo(ScreenContext& ctx)
 {
     CRenderer& r = *ctx.renderer;
-    const SongInfo& song = ctx.player->GetCurrentSong();
+    CPlayer& player = *ctx.player;
+    const SongInfo& song = player.GetCurrentSong();
 
     if (song.file_path.empty())
     {
-        r.DrawText("没有正在播放的曲目", x, y, CRenderer::FS_LARGE, Theme::kTextDim);
-        r.DrawText("按 + 浏览 SD 卡上的音乐", x, y + 44, CRenderer::FS_NORMAL, Theme::kTextDisabled);
+        r.DrawText("没有正在播放的曲目", kLeftX, kInfoY, CRenderer::FS_LARGE, Theme::kTextDim);
+        r.DrawText("按 + 浏览 SD 卡上的音乐", kLeftX, kInfoY + 44, CRenderer::FS_NORMAL,
+                   Theme::kTextDisabled);
         return;
     }
 
-    r.DrawTextEllipsis(song.GetTitle(), x, y, width, CRenderer::FS_HUGE, Theme::kText);
-    r.DrawTextEllipsis(song.GetArtist(), x, y + 52, width, CRenderer::FS_NORMAL, Theme::kTextDim);
+    r.DrawTextEllipsis(song.GetTitle(), kLeftX, kInfoY, kLeftWidth, CRenderer::FS_HUGE,
+                       Theme::kText);
+    r.DrawTextEllipsis(song.GetArtist(), kLeftX, kInfoY + 52, kLeftWidth, CRenderer::FS_NORMAL,
+                       Theme::kTextDim);
     if (!song.album.empty())
-        r.DrawTextEllipsis(song.album, x, y + 86, width, CRenderer::FS_SMALL, Theme::kTextDisabled);
+    {
+        r.DrawTextEllipsis(song.album, kLeftX, kInfoY + 86, kLeftWidth, CRenderer::FS_SMALL,
+                           Theme::kTextDisabled);
+    }
+
+    // 曲目计数：第几首 / 共几首
+    int total = player.GetPlaylistSize();
+    if (total > 0)
+    {
+        char buff[64];
+        std::snprintf(buff, sizeof(buff), "第 %d 首 / 共 %d 首",
+                      player.GetCurrentIndex() + 1, total);
+        r.DrawText(buff, kLeftX, kCounterY, CRenderer::FS_SMALL, Theme::kTextDim);
+
+        char fraction[32];
+        std::snprintf(fraction, sizeof(fraction), "%d/%d", player.GetCurrentIndex() + 1, total);
+        r.DrawText(fraction, kLeftX + kLeftWidth, kCounterY, CRenderer::FS_SMALL,
+                   Theme::kAccent, CRenderer::ALIGN_RIGHT);
+    }
 }
 
-void CPlayerScreen::DrawProgressBar(ScreenContext& ctx, int x, int y, int width)
+void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
+{
+    CRenderer& r = *ctx.renderer;
+    const bool playing = ctx.player->IsPlaying();
+
+    struct ButtonDef { const Rect& rect; HitButton id; };
+    const ButtonDef buttons[] = {
+        { kBtnPrev, HIT_PREV },
+        { kBtnPlay, HIT_PLAY },
+        { kBtnNext, HIT_NEXT },
+    };
+
+    for (const ButtonDef& button : buttons)
+    {
+        bool pressed = (m_pressed_button == button.id);
+        r.FillRoundRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, 10,
+                        pressed ? Theme::kAccentDim : Theme::kPanel);
+
+        const int cx = button.rect.x + button.rect.w / 2;
+        const int cy = button.rect.y + button.rect.h / 2;
+        const Color icon = Theme::kText;
+
+        if (button.id == HIT_PLAY)
+        {
+            if (playing)
+            {
+                // 暂停：两根竖条
+                r.FillRect(cx - 9, cy - 11, 6, 22, icon);
+                r.FillRect(cx + 3, cy - 11, 6, 22, icon);
+            }
+            else
+            {
+                r.FillTriangle(cx - 7, cy - 12, cx - 7, cy + 12, cx + 11, cy, icon);
+            }
+        }
+        else if (button.id == HIT_PREV)
+        {
+            r.FillRect(cx - 12, cy - 11, 4, 22, icon);
+            r.FillTriangle(cx + 11, cy - 12, cx + 11, cy + 12, cx - 6, cy, icon);
+        }
+        else
+        {
+            r.FillTriangle(cx - 11, cy - 12, cx - 11, cy + 12, cx + 6, cy, icon);
+            r.FillRect(cx + 8, cy - 11, 4, 22, icon);
+        }
+    }
+}
+
+void CPlayerScreen::DrawProgressBar(ScreenContext& ctx)
 {
     CRenderer& r = *ctx.renderer;
     CPlayer& player = *ctx.player;
 
-    int position = player.GetPosition();
-    int length = player.GetLength();
+    const int length = player.GetLength();
+    const int preview = GetDisplayPosition(ctx);
+    const bool dragging = m_seeking || m_touch_seeking;
 
-    // 正在用右摇杆拖动时，进度条要预览拖动后的位置
-    int preview = position + static_cast<int>(m_seek_accumulator);
-    preview = std::max(0, length > 0 ? std::min(preview, length) : preview);
-
-    const int bar_height = 6;
-    r.FillRoundRect(x, y, width, bar_height, bar_height / 2, Theme::kPanelAlt);
+    r.FillRoundRect(kLeftX, kProgressY, kLeftWidth, kProgressH, kProgressH / 2, Theme::kPanelAlt);
 
     if (length > 0)
     {
-        double ratio = static_cast<double>(preview) / length;
-        ratio = std::max(0.0, std::min(1.0, ratio));
-        int filled = static_cast<int>(width * ratio);
-        r.FillRoundRect(x, y, filled, bar_height, bar_height / 2,
-                        m_seeking ? Theme::kHighlight : Theme::kAccent);
+        double ratio = Clamp01(static_cast<double>(preview) / length);
+        int filled = static_cast<int>(kLeftWidth * ratio);
+        r.FillRoundRect(kLeftX, kProgressY, filled, kProgressH, kProgressH / 2,
+                        dragging ? Theme::kHighlight : Theme::kAccent);
         // 拖动手柄
-        r.FillRoundRect(x + filled - 6, y - 5, 12, 16, 6, Theme::kText);
+        r.FillRoundRect(kLeftX + filled - 6, kProgressY - 5, 12, 16, 6, Theme::kText);
     }
 
     CPlayTime pos_time{ preview };
     CPlayTime len_time{ length };
-    r.DrawText(pos_time.toString(false), x, y + 16, CRenderer::FS_SMALL, Theme::kTextDim);
+    r.DrawText(pos_time.toString(false), kLeftX, kProgressY + 16, CRenderer::FS_SMALL,
+               Theme::kTextDim);
     r.DrawText(length > 0 ? len_time.toString(false) : std::string("-:--"),
-               x + width, y + 16, CRenderer::FS_SMALL, Theme::kTextDim, CRenderer::ALIGN_RIGHT);
+               kLeftX + kLeftWidth, kProgressY + 16, CRenderer::FS_SMALL, Theme::kTextDim,
+               CRenderer::ALIGN_RIGHT);
 }
 
 void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, int height)
@@ -399,16 +580,14 @@ void CPlayerScreen::Draw(ScreenContext& ctx)
     const int content_top = Theme::kHeaderHeight;
     const int content_height = Theme::kScreenHeight - Theme::kHeaderHeight - Theme::kFooterHeight;
 
-    // 左侧：封面 + 曲目信息 + 进度条；右侧：歌词或频谱
-    const int cover_size = 280;
-    const int left_x = Theme::kPadding * 2;
-    const int left_width = cover_size;
-    const int right_x = left_x + left_width + Theme::kPadding * 2;
+    // 左侧：封面 + 曲目信息 + 走带按钮 + 进度条；右侧：歌词或频谱
+    const int right_x = kLeftX + kLeftWidth + Theme::kPadding * 2;
     const int right_width = Theme::kScreenWidth - right_x - Theme::kPadding * 2;
 
-    DrawCover(ctx, left_x, content_top + 32, cover_size);
-    DrawSongInfo(ctx, left_x, content_top + 32 + cover_size + 24, left_width);
-    DrawProgressBar(ctx, left_x, content_top + content_height - 56, left_width);
+    DrawCover(ctx);
+    DrawSongInfo(ctx);
+    DrawTransportButtons(ctx);
+    DrawProgressBar(ctx);
 
     if (m_view == VIEW_LYRIC)
         DrawLyricView(ctx, right_x, content_top + 16, right_width, content_height - 32);

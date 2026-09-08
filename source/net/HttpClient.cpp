@@ -1,4 +1,5 @@
 #include "HttpClient.h"
+#include "SocketGuard.h"
 #include "../core/FileUtil.h"
 
 #include <switch.h>
@@ -74,13 +75,14 @@ bool CCurlHttpClient::Init()
     if (m_inited)
         return true;
 
-    if (R_FAILED(socketInitializeDefault()))
+    // 走引用计数：nxlink 的 stdout 重定向可能已经把 socket 初始化过了
+    if (!SocketGuard::Acquire())
         return false;
     m_socket_inited = true;
 
     if (R_FAILED(nifmInitialize(NifmServiceType_User)))
     {
-        socketExit();
+        SocketGuard::Release();
         m_socket_inited = false;
         return false;
     }
@@ -89,7 +91,7 @@ bool CCurlHttpClient::Init()
     if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK)
     {
         nifmExit();
-        socketExit();
+        SocketGuard::Release();
         m_nifm_inited = false;
         m_socket_inited = false;
         return false;
@@ -112,7 +114,7 @@ void CCurlHttpClient::Uninit()
     }
     if (m_socket_inited)
     {
-        socketExit();
+        SocketGuard::Release();
         m_socket_inited = false;
     }
     m_inited = false;
@@ -203,6 +205,155 @@ bool CCurlHttpClient::Perform(const std::string& url, const std::string* post_bo
     }
 
     out.success = true;
+    return true;
+}
+
+namespace
+{
+    struct FileWriteContext
+    {
+        FILE* fp;
+        uint64_t written;
+        uint64_t total;
+        const CCurlHttpClient::ProgressCallback* progress;
+        bool cancelled;
+        bool write_failed;
+    };
+
+    size_t FileWriteCallback(char* data, size_t size, size_t nmemb, void* userdata)
+    {
+        FileWriteContext* ctx = static_cast<FileWriteContext*>(userdata);
+        size_t total = size * nmemb;
+        if (std::fwrite(data, 1, total, ctx->fp) != total)
+        {
+            ctx->write_failed = true;              // SD 卡写满或拔卡
+            return 0;
+        }
+        ctx->written += total;
+        if (ctx->progress != nullptr && *ctx->progress
+            && !(*ctx->progress)(ctx->written, ctx->total))
+        {
+            ctx->cancelled = true;
+            return 0;
+        }
+        return total;
+    }
+
+    int ProgressMetaCallback(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
+                             curl_off_t, curl_off_t)
+    {
+        FileWriteContext* ctx = static_cast<FileWriteContext*>(userdata);
+        if (dltotal > 0)
+            ctx->total = static_cast<uint64_t>(dltotal);
+        (void)dlnow;
+        return ctx->cancelled ? 1 : 0;
+    }
+}
+
+bool CCurlHttpClient::DownloadToFile(const std::string& url,
+                                     const std::vector<std::string>& headers,
+                                     const std::string& dest_path, bool require_cert,
+                                     const ProgressCallback& progress, std::string& error)
+{
+    error.clear();
+    if (!m_inited)
+    {
+        error = "网络未初始化";
+        return false;
+    }
+    // 下载下来会被当程序执行的东西，绝不能在无法验证服务器身份的情况下取
+    if (require_cert && !m_cert_verified)
+    {
+        error = "缺少 CA 证书包，无法验证服务器身份";
+        return false;
+    }
+
+    FILE* fp = std::fopen(dest_path.c_str(), "wb");
+    if (fp == nullptr)
+    {
+        error = "无法写入 " + dest_path;
+        return false;
+    }
+
+    CURL* curl = curl_easy_init();
+    if (curl == nullptr)
+    {
+        std::fclose(fp);
+        std::remove(dest_path.c_str());
+        error = "curl_easy_init 失败";
+        return false;
+    }
+
+    FileWriteContext ctx{ fp, 0, 0, &progress, false, false };
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, FileWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, ProgressMetaCallback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    // 大文件不设总时长上限，改用"低速多久算超时"，否则网慢就永远下不完
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "MusicPlayer2-Switch");
+
+    if (m_cert_verified)
+    {
+        curl_easy_setopt(curl, CURLOPT_CAINFO, m_cert_path.c_str());
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+    }
+    else
+    {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
+
+    struct curl_slist* header_list = nullptr;
+    for (const std::string& header : headers)
+        header_list = curl_slist_append(header_list, header.c_str());
+    if (header_list != nullptr)
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list);
+
+    CURLcode code = curl_easy_perform(curl);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+
+    if (header_list != nullptr)
+        curl_slist_free_all(header_list);
+    curl_easy_cleanup(curl);
+    std::fclose(fp);
+
+    bool ok = (code == CURLE_OK) && status >= 200 && status < 300;
+    if (!ok)
+    {
+        if (ctx.cancelled)
+            error = "已取消";
+        else if (ctx.write_failed)
+            error = "写入 SD 卡失败";
+        else if (code != CURLE_OK)
+            error = curl_easy_strerror(code);
+        else
+        {
+            char buff[64];
+            std::snprintf(buff, sizeof(buff), "服务器返回 HTTP %ld", status);
+            error = buff;
+        }
+        std::remove(dest_path.c_str());         // 别把半截文件留在卡上
+        return false;
+    }
+
+    // 服务器报了长度就核对一下，截断的下载绝不能拿去替换程序
+    if (ctx.total > 0 && ctx.written != ctx.total)
+    {
+        error = "下载不完整";
+        std::remove(dest_path.c_str());
+        return false;
+    }
     return true;
 }
 

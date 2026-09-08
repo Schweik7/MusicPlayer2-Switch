@@ -11,6 +11,7 @@ enum ScreenId
     SCREEN_PLAYLIST,        // 当前播放列表
     SCREEN_BROWSER,         // SD 卡文件浏览
     SCREEN_DOWNLOAD,        // 在线歌词/封面下载
+    SCREEN_SETTINGS,        // 设置 / 关于 / 检查更新
     SCREEN_COUNT,
     SCREEN_NONE = -1
 };

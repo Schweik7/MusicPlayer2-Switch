@@ -70,6 +70,8 @@ public:
     CConfig& GetConfig() { return m_config; }
     CPathMapper& GetPathMapper() { return m_path_mapper; }
     CDownloadManager& GetDownloader() { return m_downloader; }
+    // 自动更新要用到 DownloadToFile 和强制证书校验，所以拿的是具体类型
+    CCurlHttpClient& GetHttpClient() { return m_http; }
 
     // ---- 在线下载 ----
     // 网络是可选功能：初始化失败不影响播放，只是下载界面会提示不可用

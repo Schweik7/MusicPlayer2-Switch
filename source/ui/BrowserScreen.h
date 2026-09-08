@@ -37,5 +37,7 @@ private:
     int m_selected{};
     int m_scroll{};
     double m_scroll_smooth{};
+    bool m_dragging{};              // 手指正按在列表上拖动
+    double m_fling{};               // 松手后的惯性速度（行/秒）
     std::string m_error;
 };

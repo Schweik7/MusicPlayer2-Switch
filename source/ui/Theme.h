@@ -13,6 +13,18 @@ struct Color
     constexpr Color WithAlpha(uint8_t alpha) const { return Color{ r, g, b, alpha }; }
 };
 
+// 触摸命中判定用的矩形。绘制和命中要共用同一份坐标，
+// 否则很容易画一套、点另一套。
+struct Rect
+{
+    int x{}, y{}, w{}, h{};
+
+    bool Contains(int px, int py) const
+    {
+        return px >= x && px < x + w && py >= y && py < y + h;
+    }
+};
+
 namespace Theme
 {
     // 背景

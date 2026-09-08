@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -54,6 +56,14 @@ public:
                    std::string& out, std::string& error) override;
 
     void SetTimeoutSeconds(int seconds) { m_timeout_seconds = seconds; }
+
+    // 边下边写文件。NRO 有十几 MB，不能像歌词封面那样先全读进内存。
+    // progress 返回 false 表示请求取消。require_cert 为 true 时，
+    // 没有可用 CA 证书包就直接失败——用于下载会被执行的内容。
+    typedef std::function<bool(uint64_t downloaded, uint64_t total)> ProgressCallback;
+    bool DownloadToFile(const std::string& url, const std::vector<std::string>& headers,
+                        const std::string& dest_path, bool require_cert,
+                        const ProgressCallback& progress, std::string& error);
 
 private:
     // post_body 为 nullptr 时发 GET

@@ -1,4 +1,5 @@
 #include "BrowserScreen.h"
+#include "ListScroller.h"
 #include "Renderer.h"
 #include "../Player.h"
 #include "../core/MediaScanner.h"
@@ -18,6 +19,13 @@ namespace
     }
 
     const char* kRootDir = "sdmc:/";
+
+    // 列表首行的 y。40 是上方"当前路径"那一行占掉的高度，
+    // 绘制、点击命中和拖动滚动必须用同一个值
+    int ListTop()
+    {
+        return Theme::kHeaderHeight + Theme::kPadding + 40;
+    }
 }
 
 void CBrowserScreen::OnEnter(ScreenContext& ctx)
@@ -191,6 +199,7 @@ void CBrowserScreen::Update(ScreenContext& ctx, double delta_seconds)
         return;
     }
 
+    bool touch_scrolled = false;
     if (count > 0)
     {
         if (input.IsRepeat(CInputMap::BTN_DOWN))
@@ -207,11 +216,20 @@ void CBrowserScreen::Update(ScreenContext& ctx, double delta_seconds)
         if (input.IsDown(CInputMap::BTN_X))
             PlayCurrentDirectory(ctx, false);
 
-        // 触摸选中/打开
+        // 触摸拖动滚动（含松手惯性）
+        ListScroller::Params params;
+        params.list_top = ListTop();
+        params.item_height = Theme::kListItemHeight;
+        params.count = count;
+        params.visible = visible;
+        touch_scrolled = ListScroller::Update(input.GetTouch(), params, delta_seconds,
+                                              m_scroll, m_scroll_smooth, m_dragging, m_fling);
+
+        // 触摸选中/打开。划动过就不算点击，避免滑列表时误进目录
         const CInputMap::TouchState& touch = input.GetTouch();
-        if (touch.released && std::abs(touch.delta_y) < 16)
+        if (touch.released && !touch.IsDrag())
         {
-            int list_top = Theme::kHeaderHeight + Theme::kPadding + 40;
+            int list_top = ListTop();
             if (touch.y >= list_top && touch.y < list_top + visible * Theme::kListItemHeight)
             {
                 int row = (touch.y - list_top) / Theme::kListItemHeight;
@@ -232,6 +250,14 @@ void CBrowserScreen::Update(ScreenContext& ctx, double delta_seconds)
         ctx.ShowToast("已设为默认音乐目录");
     }
 
+    if (touch_scrolled)
+    {
+        // 触摸在主导滚动：把光标拉进可见范围，而不是反过来把列表拽回光标处
+        m_selected = std::max(m_scroll, std::min(m_selected, m_scroll + visible - 1));
+        m_selected = std::max(0, std::min(m_selected, std::max(0, count - 1)));
+        return;
+    }
+
     EnsureSelectionVisible(visible);
 
     double diff = m_scroll - m_scroll_smooth;
@@ -247,7 +273,7 @@ void CBrowserScreen::Draw(ScreenContext& ctx)
 
     const int list_x = Theme::kPadding * 2;
     const int path_y = Theme::kHeaderHeight + Theme::kPadding;
-    const int list_y = path_y + 40;
+    const int list_y = ListTop();
     const int list_w = Theme::kScreenWidth - list_x * 2 - 12;
     const int visible = VisibleCount();
 

@@ -52,6 +52,8 @@ public:
     void FillRect(int x, int y, int w, int h, Color color);
     void DrawRect(int x, int y, int w, int h, Color color);
     void FillRoundRect(int x, int y, int w, int h, int radius, Color color);
+    // 走带按钮的图标用三角形拼出来，不依赖系统字体里是否存在 ▶ / ⏸ 这些符号
+    void FillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, Color color);
     void DrawLine(int x1, int y1, int x2, int y2, Color color);
     // 只在指定矩形内绘制，用于列表裁剪
     void PushClip(int x, int y, int w, int h);
@@ -75,6 +77,11 @@ public:
 
     // 每帧末尾调用：淘汰长时间没用到的文字纹理
     void TrimCache();
+
+    // ---- 诊断 ----
+    int GetFontChainSize(FontSize size) const;
+    // 返回该码点由回退链上第几个字体提供；-1 表示整条链都没有这个字形
+    int FindFontIndexForCodePoint(FontSize size, char32_t code_point) const;
 
 private:
     struct FontChain

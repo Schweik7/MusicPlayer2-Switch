@@ -3,6 +3,7 @@
 // 因此可以在开发机上用固定的响应样本完整验证，不需要真机也不需要联网。
 
 #include "TestFramework.h"
+#include "../source/core/VersionUtil.h"
 
 #include "../source/core/FileUtil.h"
 #include "../source/core/LrcParser.h"
@@ -776,6 +777,49 @@ static void TestDownloadManager()
     CHECK_EQ(std::string(manager.GetProviderName()), u8"网易云音乐");
 }
 
+static void TestVersionUtil()
+{
+    std::printf("VersionUtil\n");
+
+    // 拆解
+    std::vector<int> v = VersionUtil::Parse("v1.2.3");
+    CHECK_EQ_INT(static_cast<long long>(v.size()), 3);
+    if (v.size() == 3)
+    {
+        CHECK_EQ_INT(v[0], 1);
+        CHECK_EQ_INT(v[1], 2);
+        CHECK_EQ_INT(v[2], 3);
+    }
+    // 预发布后缀在遇到非数字时截断，前面的数字要保留
+    v = VersionUtil::Parse("1.2.0-beta");
+    CHECK_EQ_INT(static_cast<long long>(v.size()), 3);
+    CHECK(VersionUtil::Parse("").empty());
+    CHECK(VersionUtil::Parse("abc").empty());
+
+    // 基本比较
+    CHECK(VersionUtil::IsNewer("0.5.0", "0.4.0"));
+    CHECK(VersionUtil::IsNewer("v0.5.0", "0.4.0"));
+    CHECK(!VersionUtil::IsNewer("0.4.0", "0.4.0"));
+    CHECK(!VersionUtil::IsNewer("0.4.0", "0.5.0"));
+
+    // 位数不同：缺的位按 0 补
+    CHECK(VersionUtil::IsNewer("1.0", "0.9.9"));
+    CHECK(VersionUtil::IsNewer("0.4.1", "0.4"));
+    CHECK(!VersionUtil::IsNewer("0.4", "0.4.0"));
+
+    // 必须按数值比而不是按字典序：0.10 比 0.9 新
+    CHECK(VersionUtil::IsNewer("0.10.0", "0.9.0"));
+    CHECK(!VersionUtil::IsNewer("0.9.0", "0.10.0"));
+    CHECK(VersionUtil::IsNewer("1.0.10", "1.0.9"));
+
+    // 解析不出版本号时一律当作"没有更新"，宁可不更新也不能乱更新
+    CHECK(!VersionUtil::IsNewer("", "0.4.0"));
+    CHECK(!VersionUtil::IsNewer("latest", "0.4.0"));
+
+    // 带后缀的新版本仍应被识别
+    CHECK(VersionUtil::IsNewer("v1.2.0-beta", "1.1.9"));
+}
+
 void RunNetTests()
 {
     TestJson();
@@ -786,4 +830,5 @@ void RunNetTests()
     TestProviderRobustness();
     TestLyricProviderUtil();
     TestDownloadManager();
+    TestVersionUtil();
 }

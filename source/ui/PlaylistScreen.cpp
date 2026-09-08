@@ -1,9 +1,11 @@
 #include "PlaylistScreen.h"
+#include "ListScroller.h"
 #include "Renderer.h"
 #include "../Player.h"
 #include "../input/InputMap.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace
@@ -30,6 +32,18 @@ void CPlaylistScreen::OnEnter(ScreenContext& ctx)
 const char* CPlaylistScreen::GetButtonHints() const
 {
     return "A 播放选中项   B 返回   L/R 翻页   + 文件浏览";
+}
+
+bool CPlaylistScreen::UpdateTouchScroll(ScreenContext& ctx, int count, int visible,
+                                        double delta_seconds)
+{
+    ListScroller::Params params;
+    params.list_top = Theme::kHeaderHeight + Theme::kPadding;
+    params.item_height = Theme::kListItemHeight;
+    params.count = count;
+    params.visible = visible;
+    return ListScroller::Update(ctx.input->GetTouch(), params, delta_seconds,
+                                m_scroll, m_scroll_smooth, m_dragging, m_fling);
 }
 
 void CPlaylistScreen::EnsureSelectionVisible(int visible_count)
@@ -79,9 +93,12 @@ void CPlaylistScreen::Update(ScreenContext& ctx, double delta_seconds)
             ctx.ShowToast("无法播放该文件");
     }
 
-    // 触摸：点击某一行直接播放
+    // 触摸拖动滚动（含松手惯性）
+    bool touch_scrolled = UpdateTouchScroll(ctx, count, visible, delta_seconds);
+
+    // 触摸：点击某一行直接播放。划动过就不算点击，避免滑列表时误播放
     const CInputMap::TouchState& touch = input.GetTouch();
-    if (touch.released && std::abs(touch.delta_y) < 16)
+    if (touch.released && !touch.IsDrag())
     {
         int list_top = Theme::kHeaderHeight + Theme::kPadding;
         if (touch.y >= list_top && touch.y < list_top + visible * Theme::kListItemHeight)
@@ -95,6 +112,14 @@ void CPlaylistScreen::Update(ScreenContext& ctx, double delta_seconds)
                     ctx.next_screen = SCREEN_PLAYER;
             }
         }
+    }
+
+    if (touch_scrolled)
+    {
+        // 触摸在主导滚动：把光标拉进可见范围，而不是反过来把列表拽回光标处
+        m_selected = std::max(m_scroll, std::min(m_selected, m_scroll + visible - 1));
+        m_selected = std::max(0, std::min(m_selected, count - 1));
+        return;
     }
 
     EnsureSelectionVisible(visible);

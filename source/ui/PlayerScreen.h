@@ -28,12 +28,26 @@ public:
     const char* GetButtonHints() const override;
 
 private:
-    void DrawCover(ScreenContext& ctx, int x, int y, int size);
-    void DrawSongInfo(ScreenContext& ctx, int x, int y, int width);
-    void DrawProgressBar(ScreenContext& ctx, int x, int y, int width);
+    // 触摸能按到的按钮
+    enum HitButton
+    {
+        HIT_NONE = 0,
+        HIT_PREV,
+        HIT_PLAY,
+        HIT_NEXT
+    };
+
+    void DrawCover(ScreenContext& ctx);
+    void DrawSongInfo(ScreenContext& ctx);
+    void DrawProgressBar(ScreenContext& ctx);
+    void DrawTransportButtons(ScreenContext& ctx);
     void DrawLyricView(ScreenContext& ctx, int x, int y, int width, int height);
     void DrawSpectrumView(ScreenContext& ctx, int x, int y, int width, int height);
     void DrawVolumeOverlay(ScreenContext& ctx);
+
+    void HandleTouch(ScreenContext& ctx);
+    // 进度条上要显示的位置：正常是播放位置，拖动时是拖到的位置
+    int  GetDisplayPosition(ScreenContext& ctx) const;
 
     // 换歌时重新加载封面
     void RefreshCover(ScreenContext& ctx);
@@ -48,4 +62,8 @@ private:
     double m_volume_overlay_timer{};        // 调节音量后短暂显示的浮层
     bool m_seeking{};                       // 右摇杆拖动进度中
     double m_seek_accumulator{};
+
+    bool m_touch_seeking{};                 // 手指按在进度条上拖动中
+    int  m_touch_seek_ms{};
+    HitButton m_pressed_button{ HIT_NONE }; // 当前被手指按住的按钮，用于按下态高亮
 };

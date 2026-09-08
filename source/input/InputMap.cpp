@@ -47,6 +47,13 @@ namespace
         case CInputMap::BTN_DOWN:     return HidNpadButton_Down | HidNpadButton_StickLDown;
         case CInputMap::BTN_LEFT:     return HidNpadButton_Left | HidNpadButton_StickLLeft;
         case CInputMap::BTN_RIGHT:    return HidNpadButton_Right | HidNpadButton_StickLRight;
+        // 分开的版本：播放界面把方向键留给走带控制，音量交给摇杆
+        case CInputMap::BTN_DPAD_UP:    return HidNpadButton_Up;
+        case CInputMap::BTN_DPAD_DOWN:  return HidNpadButton_Down;
+        case CInputMap::BTN_DPAD_LEFT:  return HidNpadButton_Left;
+        case CInputMap::BTN_DPAD_RIGHT: return HidNpadButton_Right;
+        case CInputMap::BTN_STICK_UP:   return HidNpadButton_StickLUp;
+        case CInputMap::BTN_STICK_DOWN: return HidNpadButton_StickLDown;
         case CInputMap::BTN_STICK_L:  return HidNpadButton_StickL;
         default:                      return 0;
         }
@@ -123,6 +130,8 @@ void CInputMap::Update(double delta_seconds)
     m_touch.released = false;
     if (has_touch)
     {
+        int prev_x = m_touch.x;
+        int prev_y = m_touch.y;
         m_touch.x = static_cast<int>(touch_state.touches[0].x);
         m_touch.y = static_cast<int>(touch_state.touches[0].y);
         if (!was_touching)
@@ -130,9 +139,13 @@ void CInputMap::Update(double delta_seconds)
             m_touch.pressed = true;
             m_touch.start_x = m_touch.x;
             m_touch.start_y = m_touch.y;
+            prev_x = m_touch.x;                 // 刚按下这帧没有位移
+            prev_y = m_touch.y;
         }
         m_touch.delta_x = m_touch.x - m_touch.start_x;
         m_touch.delta_y = m_touch.y - m_touch.start_y;
+        m_touch.step_x = m_touch.x - prev_x;
+        m_touch.step_y = m_touch.y - prev_y;
         m_touch.touching = true;
     }
     else
@@ -140,7 +153,14 @@ void CInputMap::Update(double delta_seconds)
         if (was_touching)
             m_touch.released = true;
         m_touch.touching = false;
-        m_touch.delta_x = 0;
-        m_touch.delta_y = 0;
+        // 注意：抬手这一帧不能清 delta_x/y，界面要靠它判断这是点击还是拖动结束
+        m_touch.step_x = 0;
+        m_touch.step_y = 0;
     }
+
+    // 空闲计时用：摇杆的判断走归一化后的值，死区内的漂移不算操作
+    m_has_any_input = (held != 0) || (down != 0) || (up != 0)
+                      || m_touch.touching || m_touch.released
+                      || m_left_x != 0.0f || m_left_y != 0.0f
+                      || m_right_x != 0.0f || m_right_y != 0.0f;
 }
