@@ -15,8 +15,28 @@
 #include <dirent.h>
 #endif
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 namespace FileUtil
 {
+
+void CommitDevice(const std::string& path)
+{
+#ifdef __SWITCH__
+    // 取挂载点名（冒号之前那段），默认 sdmc
+    std::string device = "sdmc";
+    size_t colon = path.find(':');
+    if (colon != std::string::npos && colon > 0)
+        device = path.substr(0, colon);
+    if (device == "romfs")
+        return;                         // 只读设备没什么可提交的
+    fsdevCommitDevice(device.c_str());
+#else
+    (void)path;
+#endif
+}
 
 #ifdef _WIN32
 namespace
@@ -249,6 +269,8 @@ bool WriteAll(const std::string& path, const std::string& content)
     size_t written = content.empty() ? 0 : std::fwrite(content.data(), 1, content.size(), fp);
     bool ok = (written == content.size());
     std::fclose(fp);
+    // 必须提交，否则文件在 SD 卡上是个大小为 0、stat 不到的坏条目
+    CommitDevice(path);
     return ok;
 }
 
@@ -285,6 +307,8 @@ bool CreateDirRecursive(const std::string& dir)
             }
         }
     }
+    // 目录创建同样要提交，否则后续往里写文件会失败
+    CommitDevice(dir);
     return true;
 }
 

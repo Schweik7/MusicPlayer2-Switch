@@ -27,6 +27,8 @@ bool CApp::Init()
         m_last_error = m_player.GetLastError();
         return false;
     }
+    Diag::ProbeNetwork(m_player.GetHttpClient());
+
     m_input.Init();
     m_input.SetTouchEnabled(m_player.GetConfig().GetTouchEnabled());
 

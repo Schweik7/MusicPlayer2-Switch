@@ -190,9 +190,17 @@ bool CCurlHttpClient::Perform(const std::string& url, const std::string* post_bo
     if (code != CURLE_OK)
     {
         if (ctx.overflowed)
+        {
             out.error = "响应内容过大";
+        }
         else
-            out.error = curl_easy_strerror(code);
+        {
+            // 带上错误码：证书类问题里 60（对端证书验证失败）和
+            // 77（CA 文件读不出来）原因完全不同，只看文案分不出来
+            char buff[32];
+            std::snprintf(buff, sizeof(buff), "[curl %d] ", static_cast<int>(code));
+            out.error = std::string(buff) + curl_easy_strerror(code);
+        }
         out.body.clear();
         return false;
     }
@@ -327,6 +335,8 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
         curl_slist_free_all(header_list);
     curl_easy_cleanup(curl);
     std::fclose(fp);
+    // 关文件之后必须提交，否则大文件在 SD 卡上是个空壳
+    FileUtil::CommitDevice(dest_path);
 
     bool ok = (code == CURLE_OK) && status >= 200 && status < 300;
     if (!ok)
@@ -336,7 +346,11 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
         else if (ctx.write_failed)
             error = "写入 SD 卡失败";
         else if (code != CURLE_OK)
-            error = curl_easy_strerror(code);
+        {
+            char buff[32];
+            std::snprintf(buff, sizeof(buff), "[curl %d] ", static_cast<int>(code));
+            error = std::string(buff) + curl_easy_strerror(code);
+        }
         else
         {
             char buff[64];

@@ -17,26 +17,37 @@ namespace
     const int kLeftX = 48;
     const int kLeftWidth = 260;
 
-    const Rect kCoverRect{ kLeftX, 100, kLeftWidth, kLeftWidth };
+    const int kCoverSize = 200;
+    const Rect kCoverRect{ kLeftX + (kLeftWidth - kCoverSize) / 2, 88, kCoverSize, kCoverSize };
 
-    const int kInfoY = 378;                 // 标题基线
-    const int kCounterY = 490;              // “第 N 首 / 共 M 首”
+    const int kInfoY = 298;                 // 标题基线
+    const int kCounterY = 398;              // “第 N 首 / 共 M 首”
 
-    // 走带按钮：上一曲 / 播放暂停 / 下一曲，一排三个居中
-    const int kButtonY = 512;
-    const int kButtonW = 64;
-    const int kButtonH = 52;
-    const int kButtonGap = 20;
-    const int kButtonsX = kLeftX + (kLeftWidth - (kButtonW * 3 + kButtonGap * 2)) / 2;
+    // 走带按钮排成十字，位置与方向键一一对应：
+    //        [上] 播放/暂停
+    //  [左]        [右]      上一曲 / 下一曲
+    //        [下] 停止
+    // 屏幕上的布局本身就是键位说明，所以底栏不再重复方向键的指引。
+    const int kBtnW = 56;
+    const int kBtnH = 44;
+    const int kBtnGap = 6;
+    const int kCrossX = kLeftX + (kLeftWidth - (kBtnW * 3 + kBtnGap * 2)) / 2;
+    const int kCrossY = 424;
+    const int kColMid = kCrossX + kBtnW + kBtnGap;
+    const int kRowMid = kCrossY + kBtnH + kBtnGap;
+    const int kRowBottom = kRowMid + kBtnH + kBtnGap;
 
-    const Rect kBtnPrev{ kButtonsX, kButtonY, kButtonW, kButtonH };
-    const Rect kBtnPlay{ kButtonsX + kButtonW + kButtonGap, kButtonY, kButtonW, kButtonH };
-    const Rect kBtnNext{ kButtonsX + (kButtonW + kButtonGap) * 2, kButtonY, kButtonW, kButtonH };
+    const Rect kBtnPlay{ kColMid, kCrossY, kBtnW, kBtnH };
+    const Rect kBtnPrev{ kCrossX, kRowMid, kBtnW, kBtnH };
+    const Rect kBtnNext{ kColMid + kBtnW + kBtnGap, kRowMid, kBtnW, kBtnH };
+    const Rect kBtnStop{ kColMid, kRowBottom, kBtnW, kBtnH };
+    // 十字中心那格不放功能，只画个装饰性的轴心让它读起来像方向键
+    const Rect kCrossHub{ kColMid, kRowMid, kBtnW, kBtnH };
 
-    const int kProgressY = 596;
+    const int kProgressY = 586;
     const int kProgressH = 6;
     // 触摸热区比 6 像素的可视进度条大得多——手指点不了那么准
-    const Rect kProgressHit{ kLeftX - 12, kProgressY - 22, kLeftWidth + 24, 46 };
+    const Rect kProgressHit{ kLeftX - 12, kProgressY - 20, kLeftWidth + 24, 44 };
 
     double Clamp01(double value)
     {
@@ -74,8 +85,9 @@ void CPlayerScreen::OnEnter(ScreenContext& ctx)
 
 const char* CPlayerScreen::GetButtonHints() const
 {
-    return "方向键 ←→ 上下曲  ↑ 播放/暂停  ↓ 停止   ZL/ZR 快退/快进   摇杆↑↓ 音量   "
-           "X 视图   Y 模式   B+Y 下载   - 列表   + 浏览   B+ + 设置";
+    // 走带控制不写在这里：屏幕上的十字按钮与方向键一一对应，本身就是说明
+    return "ZL/ZR 快退/快进   摇杆↑↓ 音量   X 视图   Y 模式   "
+           "B+Y 下载   - 列表   + 浏览   B++ 设置";
 }
 
 void CPlayerScreen::RefreshCover(ScreenContext& ctx)
@@ -243,6 +255,7 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         if (kBtnPrev.Contains(touch.x, touch.y))      m_pressed_button = HIT_PREV;
         else if (kBtnPlay.Contains(touch.x, touch.y)) m_pressed_button = HIT_PLAY;
         else if (kBtnNext.Contains(touch.x, touch.y)) m_pressed_button = HIT_NEXT;
+        else if (kBtnStop.Contains(touch.x, touch.y)) m_pressed_button = HIT_STOP;
     }
 
     // 划动不算点击，否则在屏幕上滑一下会误触发
@@ -250,13 +263,26 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         return;
 
     if (kBtnPrev.Contains(touch.x, touch.y))
+    {
         player.PlayPrevious();
+    }
     else if (kBtnPlay.Contains(touch.x, touch.y))
+    {
         player.PlayOrPause();
+    }
     else if (kBtnNext.Contains(touch.x, touch.y))
+    {
         player.PlayNext(true);
+    }
+    else if (kBtnStop.Contains(touch.x, touch.y))
+    {
+        player.Stop();
+        ctx.ShowToast("已停止");
+    }
     else if (kCoverRect.Contains(touch.x, touch.y))
+    {
         m_view = static_cast<ViewMode>((m_view + 1) % VIEW_COUNT);
+    }
 }
 
 int CPlayerScreen::GetDisplayPosition(ScreenContext& ctx) const
@@ -309,11 +335,11 @@ void CPlayerScreen::DrawSongInfo(ScreenContext& ctx)
 
     r.DrawTextEllipsis(song.GetTitle(), kLeftX, kInfoY, kLeftWidth, CRenderer::FS_HUGE,
                        Theme::kText);
-    r.DrawTextEllipsis(song.GetArtist(), kLeftX, kInfoY + 52, kLeftWidth, CRenderer::FS_NORMAL,
+    r.DrawTextEllipsis(song.GetArtist(), kLeftX, kInfoY + 46, kLeftWidth, CRenderer::FS_NORMAL,
                        Theme::kTextDim);
     if (!song.album.empty())
     {
-        r.DrawTextEllipsis(song.album, kLeftX, kInfoY + 86, kLeftWidth, CRenderer::FS_SMALL,
+        r.DrawTextEllipsis(song.album, kLeftX, kInfoY + 76, kLeftWidth, CRenderer::FS_SMALL,
                            Theme::kTextDisabled);
     }
 
@@ -338,45 +364,55 @@ void CPlayerScreen::DrawTransportButtons(ScreenContext& ctx)
     CRenderer& r = *ctx.renderer;
     const bool playing = ctx.player->IsPlaying();
 
+    // 先画中心轴心，让四个按钮读起来是一个方向键而不是四个孤立的方块
+    r.FillRoundRect(kCrossHub.x + 14, kCrossHub.y + 12, kCrossHub.w - 28, kCrossHub.h - 24, 4,
+                    Theme::kPanel.WithAlpha(120));
+
     struct ButtonDef { const Rect& rect; HitButton id; };
     const ButtonDef buttons[] = {
-        { kBtnPrev, HIT_PREV },
         { kBtnPlay, HIT_PLAY },
+        { kBtnPrev, HIT_PREV },
         { kBtnNext, HIT_NEXT },
+        { kBtnStop, HIT_STOP },
     };
 
     for (const ButtonDef& button : buttons)
     {
         bool pressed = (m_pressed_button == button.id);
-        r.FillRoundRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, 10,
+        r.FillRoundRect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, 8,
                         pressed ? Theme::kAccentDim : Theme::kPanel);
 
         const int cx = button.rect.x + button.rect.w / 2;
         const int cy = button.rect.y + button.rect.h / 2;
         const Color icon = Theme::kText;
 
-        if (button.id == HIT_PLAY)
+        switch (button.id)
         {
+        case HIT_PLAY:
             if (playing)
             {
                 // 暂停：两根竖条
-                r.FillRect(cx - 9, cy - 11, 6, 22, icon);
-                r.FillRect(cx + 3, cy - 11, 6, 22, icon);
+                r.FillRect(cx - 8, cy - 9, 5, 18, icon);
+                r.FillRect(cx + 3, cy - 9, 5, 18, icon);
             }
             else
             {
-                r.FillTriangle(cx - 7, cy - 12, cx - 7, cy + 12, cx + 11, cy, icon);
+                r.FillTriangle(cx - 6, cy - 10, cx - 6, cy + 10, cx + 9, cy, icon);
             }
-        }
-        else if (button.id == HIT_PREV)
-        {
-            r.FillRect(cx - 12, cy - 11, 4, 22, icon);
-            r.FillTriangle(cx + 11, cy - 12, cx + 11, cy + 12, cx - 6, cy, icon);
-        }
-        else
-        {
-            r.FillTriangle(cx - 11, cy - 12, cx - 11, cy + 12, cx + 6, cy, icon);
-            r.FillRect(cx + 8, cy - 11, 4, 22, icon);
+            break;
+        case HIT_PREV:
+            r.FillRect(cx - 11, cy - 9, 3, 18, icon);
+            r.FillTriangle(cx + 10, cy - 10, cx + 10, cy + 10, cx - 5, cy, icon);
+            break;
+        case HIT_NEXT:
+            r.FillTriangle(cx - 10, cy - 10, cx - 10, cy + 10, cx + 5, cy, icon);
+            r.FillRect(cx + 8, cy - 9, 3, 18, icon);
+            break;
+        case HIT_STOP:
+            r.FillRect(cx - 8, cy - 8, 16, 16, icon);
+            break;
+        default:
+            break;
         }
     }
 }

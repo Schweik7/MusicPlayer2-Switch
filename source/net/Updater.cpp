@@ -231,6 +231,9 @@ void CUpdater::DoInstall()
         return;
     }
     std::remove(backup_path.c_str());
+    // 整个替换过程都要提交，否则 SD 卡上留下的是个大小为 0 的坏 NRO，
+    // 下次就再也启动不了了
+    FileUtil::CommitDevice(m_self_path);
 
     std::lock_guard<std::mutex> lock(m_mutex);
     m_status.state = ST_INSTALLED;

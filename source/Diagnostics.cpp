@@ -1,5 +1,6 @@
 #include "Diagnostics.h"
 #include "core/FileUtil.h"
+#include "net/HttpClient.h"
 #include "net/SocketGuard.h"
 #include "ui/Renderer.h"
 
@@ -25,6 +26,7 @@ namespace
     bool g_enabled = false;
     bool g_socket_held = false;
     FILE* g_log_file = nullptr;
+    int g_lines_since_commit = 0;
 
     const char* kDiagDir = "sdmc:/switch/MusicPlayer2/diag";
     const char* kLogPath = "sdmc:/switch/MusicPlayer2/diag.log";
@@ -101,6 +103,11 @@ bool Begin()
     // 同时写一份日志到 SD 卡。
     // nxlink 的 stdout 只有在从开发机推送启动时才有，而 netloader 和 ftpd
     // 不能同时开着；写文件则任何启动方式都能拿到结果，事后用 FTP 取走即可。
+    //
+    // 先删掉旧的：之前因为没有提交，卡上可能留下一个大小为 0、
+    // 元数据损坏的条目，直接以 "wb" 打开它有可能失败。
+    std::remove(kLogPath);
+    FileUtil::CommitDevice(kLogPath);
     g_log_file = std::fopen(kLogPath, "wb");
 
     g_enabled = true;
@@ -118,6 +125,7 @@ void End()
     {
         std::fclose(g_log_file);
         g_log_file = nullptr;
+        FileUtil::CommitDevice(kLogPath);
     }
     if (g_socket_held)
     {
@@ -146,6 +154,14 @@ void Logf(const char* format, ...)
         std::fprintf(g_log_file, "%s\n", line);
         // 每行都刷盘：崩溃时最后几行恰恰是最有价值的
         std::fflush(g_log_file);
+
+        // fflush 只是把数据交给 FS 服务，还要提交才会真正落到 SD 卡上。
+        // 提交要刷整个 FAT，比较贵，所以攒一批再提交而不是每行都提交。
+        if (++g_lines_since_commit >= 20)
+        {
+            FileUtil::CommitDevice(kLogPath);
+            g_lines_since_commit = 0;
+        }
     }
 }
 
@@ -171,6 +187,7 @@ void ProbeFileSystem()
         Logf("无法创建诊断目录 %s: errno=%d (%s)", kDiagDir, errno, std::strerror(errno));
         return;
     }
+    FileUtil::CommitDevice(kDiagDir);
 
     std::vector<std::string> created;
 
@@ -189,6 +206,8 @@ void ProbeFileSystem()
         }
         std::fwrite("ok\n", 1, 3, fp);
         std::fclose(fp);
+        // 真实代码写完都会提交，探针也必须提交，否则测的是"没提交"时的行为
+        FileUtil::CommitDevice(kDiagDir);
 
         // 写进去只是第一步，还要能再打开、能被 stat 到才算真的支持
         errno = 0;
@@ -238,6 +257,7 @@ void ProbeFileSystem()
         std::string dir = std::string(kDiagDir) + "/中文目录";
         errno = 0;
         bool ok = (::mkdir(dir.c_str(), 0777) == 0) || errno == EEXIST;
+        FileUtil::CommitDevice(kDiagDir);
         std::string desc = ok ? "ok"
                               : ("失败 errno=" + std::to_string(errno) + " (" + std::strerror(errno) + ")");
         Logf("[目录] 中文目录名: %s", desc.c_str());
@@ -356,6 +376,63 @@ void ProbeDirectory(const std::string& dir)
 
     Logf("小计：readdir 返回 %d 项，其中含非 ASCII 字节 %d 项，stat 失败 %d 项",
          total, non_ascii, stat_failed);
+}
+
+void ProbeNetwork(CCurlHttpClient& http)
+{
+    if (!g_enabled)
+        return;
+
+    Logf("");
+    Logf("---- 网络与 TLS 自检 ----");
+    Logf("  网络可用      : %s", CCurlHttpClient::IsNetworkAvailable() ? "是" : "否");
+    Logf("  curl 已初始化 : %s", http.IsInited() ? "是" : "否");
+    Logf("  证书验证      : %s", http.IsCertVerified() ? "启用" : "未启用（找不到 CA 证书包）");
+
+    const std::string& cert_path = http.GetCertPath();
+    if (cert_path.empty())
+    {
+        Logf("  CA 证书包     : 未找到");
+    }
+    else
+    {
+        // 大小很关键：romfs 读取有问题的话这里会读出 0 或读不到，
+        // 而 mbedTLS 拿到空的信任库同样会报"对端证书验证失败"，
+        // 光看 curl 的错误码分不出这两种情况
+        std::string content;
+        bool read_ok = FileUtil::ReadAll(cert_path, content);
+        Logf("  CA 证书包     : %s", cert_path.c_str());
+        Logf("  能否读取      : %s，大小 %u 字节",
+             read_ok ? "能" : "不能", static_cast<unsigned>(content.size()));
+        if (read_ok)
+        {
+            size_t count = 0;
+            for (size_t pos = content.find("BEGIN CERTIFICATE");
+                 pos != std::string::npos;
+                 pos = content.find("BEGIN CERTIFICATE", pos + 1))
+            {
+                ++count;
+            }
+            Logf("  含证书条目    : %u 个", static_cast<unsigned>(count));
+        }
+    }
+
+    if (!http.IsInited() || !CCurlHttpClient::IsNetworkAvailable())
+    {
+        Logf("  跳过实际请求（网络未就绪）");
+        return;
+    }
+
+    // 真的发一次更新检查用的请求，把结果原样记下来
+    const char* kUrl = "https://api.github.com/repos/Schweik7/MusicPlayer2/releases/latest";
+    HttpResponse response;
+    std::vector<std::string> headers{ "Accept: application/vnd.github+json" };
+    bool ok = http.Get(kUrl, headers, response);
+    Logf("  GitHub API    : %s  HTTP %ld  响应 %u 字节",
+         ok ? "成功" : "失败", response.status_code,
+         static_cast<unsigned>(response.body.size()));
+    if (!ok)
+        Logf("  错误          : %s", response.error.c_str());
 }
 
 void ProbeFont(const CRenderer& renderer)

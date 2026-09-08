@@ -2,6 +2,7 @@
 #include <string>
 
 class CRenderer;
+class CCurlHttpClient;
 
 // 实机诊断。
 //
@@ -30,4 +31,8 @@ namespace Diag
     // 逐条枚举一个真实目录并 stat，报告程序实际能看到/能打开多少条目。
     // 这是判断"中文文件到底能不能用"最直接的证据。
     void ProbeDirectory(const std::string& dir);
+
+    // 网络与 TLS 自检：报告 CA 证书包的位置和大小，并真的发一次
+    // 更新检查会用到的那个请求，把 curl 的错误码原样记下来。
+    void ProbeNetwork(CCurlHttpClient& http);
 }

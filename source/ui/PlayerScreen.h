@@ -28,13 +28,16 @@ public:
     const char* GetButtonHints() const override;
 
 private:
-    // 触摸能按到的按钮
+    // 触摸能按到的按钮。按十字排布，位置与方向键一一对应：
+    // 上=播放/暂停，左=上一曲，右=下一曲，下=停止。
+    // 这样屏幕上的按钮本身就是键位说明，底栏不用再写方向键指引。
     enum HitButton
     {
         HIT_NONE = 0,
         HIT_PREV,
         HIT_PLAY,
-        HIT_NEXT
+        HIT_NEXT,
+        HIT_STOP
     };
 
     void DrawCover(ScreenContext& ctx);
