@@ -80,4 +80,31 @@ std::string FormatTime(const DateTime& dt)
     return buff;
 }
 
+std::string FormatFull(const DateTime& dt)
+{
+    char buff[32];
+    std::snprintf(buff, sizeof(buff), "%04d-%02d-%02d %02d:%02d",
+                  dt.year, dt.month, dt.day, dt.hour, dt.minute);
+    return buff;
+}
+
+int GetBuildYear()
+{
+    // __DATE__ 形如 "Sep  8 2026"，年份固定在第 7..10 个字符
+    const char* date = __DATE__;
+    int year = 0;
+    for (int i = 7; i < 11 && date[i] >= '0' && date[i] <= '9'; ++i)
+        year = year * 10 + (date[i] - '0');
+    return year > 0 ? year : 2026;
+}
+
+bool IsClockImplausible()
+{
+    DateTime now = Now();
+    if (!now.valid)
+        return false;                   // 读不到时间就别乱下结论
+    int build_year = GetBuildYear();
+    return now.year < build_year || now.year > build_year + 2;
+}
+
 }   // namespace SystemClock

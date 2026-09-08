@@ -238,6 +238,50 @@ static FILE* OpenFile(const std::string& path, const char* mode)
 #endif
 }
 
+bool ReadHead(const std::string& path, size_t max_bytes, std::string& content)
+{
+    content.clear();
+    if (max_bytes == 0)
+        return false;
+    FILE* fp = OpenFile(path, "rb");
+    if (fp == nullptr)
+        return false;
+
+    content.resize(max_bytes);
+    size_t got = std::fread(&content[0], 1, max_bytes, fp);
+    bool ok = (std::ferror(fp) == 0);
+    std::fclose(fp);
+    content.resize(ok ? got : 0);
+    return ok && got > 0;
+}
+
+bool ReadTail(const std::string& path, size_t bytes, std::string& content)
+{
+    content.clear();
+    if (bytes == 0)
+        return false;
+    FILE* fp = OpenFile(path, "rb");
+    if (fp == nullptr)
+        return false;
+
+    bool ok = false;
+    if (std::fseek(fp, 0, SEEK_END) == 0)
+    {
+        long size = std::ftell(fp);
+        // 文件比要读的还短就直接算失败，省得调用方还要判断读回来多少
+        if (size >= static_cast<long>(bytes)
+            && std::fseek(fp, size - static_cast<long>(bytes), SEEK_SET) == 0)
+        {
+            content.resize(bytes);
+            ok = (std::fread(&content[0], 1, bytes, fp) == bytes);
+        }
+    }
+    std::fclose(fp);
+    if (!ok)
+        content.clear();
+    return ok;
+}
+
 bool ReadAll(const std::string& path, std::string& content)
 {
     content.clear();

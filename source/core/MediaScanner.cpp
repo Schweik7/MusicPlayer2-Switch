@@ -1,4 +1,5 @@
 #include "MediaScanner.h"
+#include "AudioTag.h"
 #include "FileUtil.h"
 #include "StringUtil.h"
 
@@ -48,8 +49,33 @@ void CMediaScanner::FillTagFromFileName(SongInfo& song)
     }
 }
 
+void CMediaScanner::FillTag(SongInfo& song, bool read_file_tags)
+{
+    // 优先读文件内的标签。Switch 的文件系统存不了中文文件名，中文歌传上来
+    // 只能改成拼音，靠文件名根本拿不到真正的曲目信息；而标签是文件内部的
+    // UTF-8/UTF-16 文本，跟文件系统无关，读出来就是对的。
+    if (read_file_tags)
+    {
+        AudioTag::Tag tag;
+        if (AudioTag::Read(song.file_path, tag))
+        {
+            if (song.title.empty())  song.title = tag.title;
+            if (song.artist.empty()) song.artist = tag.artist;
+            if (song.album.empty())  song.album = tag.album;
+            if (song.genre.empty())  song.genre = tag.genre;
+            if (song.year.empty() && tag.year > 0)
+                song.year = std::to_string(tag.year);
+            if (song.track == 0)
+                song.track = tag.track;
+        }
+    }
+    // 标签缺失或读不到时退回文件名
+    FillTagFromFileName(song);
+}
+
 void CMediaScanner::ScanDirectory(const std::string& dir, std::vector<SongInfo>& result,
-                                  int max_depth, const std::atomic<bool>* cancel)
+                                  int max_depth, const std::atomic<bool>* cancel,
+                                  bool read_file_tags)
 {
     if (cancel != nullptr && cancel->load())
         return;
@@ -69,13 +95,14 @@ void CMediaScanner::ScanDirectory(const std::string& dir, std::vector<SongInfo>&
             if (entry.name[0] == '.')                       // 跳过隐藏目录
                 continue;
             if (max_depth != 0)
-                ScanDirectory(full_path, result, max_depth < 0 ? -1 : max_depth - 1, cancel);
+                ScanDirectory(full_path, result, max_depth < 0 ? -1 : max_depth - 1,
+                              cancel, read_file_tags);
         }
         else if (IsSupportedAudio(full_path))
         {
             SongInfo song;
             song.file_path = full_path;
-            FillTagFromFileName(song);
+            FillTag(song, read_file_tags);
             result.push_back(std::move(song));
         }
     }

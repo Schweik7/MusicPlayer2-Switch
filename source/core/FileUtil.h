@@ -29,6 +29,10 @@ namespace FileUtil
     bool Exists(const std::string& path);
     bool IsDirectory(const std::string& path);
     bool ReadAll(const std::string& path, std::string& content);
+    // 只读开头/结尾的一段。读标签时用：ID3v2 的标签体可能有几 MB 的内嵌封面，
+    // 整文件读进来会让扫描一个音乐库变成读几百 MB。
+    bool ReadHead(const std::string& path, size_t max_bytes, std::string& content);
+    bool ReadTail(const std::string& path, size_t bytes, std::string& content);
     bool WriteAll(const std::string& path, const std::string& content);
     bool CreateDirRecursive(const std::string& dir);
 

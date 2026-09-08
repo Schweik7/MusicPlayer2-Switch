@@ -30,6 +30,8 @@ private:
     void Activate(ScreenContext& ctx);
     // 把当前目录里的音频文件全部加入播放列表并从选中项开始播放
     void PlayCurrentDirectory(ScreenContext& ctx, bool from_selection);
+    // 设为默认音乐目录：写配置、立刻落盘，并把目录扫进播放列表
+    void SetAsMusicDir(ScreenContext& ctx);
     void EnsureSelectionVisible(int visible_count);
 
     std::string m_dir;

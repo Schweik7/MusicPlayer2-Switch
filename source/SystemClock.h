@@ -29,4 +29,17 @@ namespace SystemClock
     std::string FormatDate(const DateTime& dt);
     // "21:34"
     std::string FormatTime(const DateTime& dt);
+    // "2030-02-14 09:12"，用于日志和错误提示
+    std::string FormatFull(const DateTime& dt);
+
+    // 由 __DATE__ 推出的构建年份。
+    int GetBuildYear();
+
+    // 系统时钟是否明显不对。
+    //
+    // 判据是拿系统年份和构建年份比：程序不可能跑在比自己构建更早的年份，
+    // 也很少会在构建两年之后还没更新过。时钟离谱会直接导致 TLS 校验失败
+    // （证书被判成尚未生效或已过期），而 curl 只会报一句"证书验证失败"，
+    // 用户根本想不到是时间的问题，所以值得专门认出来。
+    bool IsClockImplausible();
 }

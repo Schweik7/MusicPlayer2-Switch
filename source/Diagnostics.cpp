@@ -1,4 +1,5 @@
 #include "Diagnostics.h"
+#include "SystemClock.h"
 #include "core/FileUtil.h"
 #include "net/HttpClient.h"
 #include "net/SocketGuard.h"
@@ -342,6 +343,17 @@ void ProbeDirectory(const std::string& dir)
     int stat_failed = 0;
     int detail_budget = 24;             // 异常条目最多详细打这么多条，避免日志爆掉
 
+    // 先数一遍条目总数。条目少就全部详细打印——非 ASCII 字符如果是被"删掉"
+    // 而不是被替换成 '_'，剩下的名字看着完全正常，靠"可疑"规则会漏掉。
+    int entry_count = 0;
+    if (DIR* counter = ::opendir(dir.c_str()))
+    {
+        while (::readdir(counter) != nullptr)
+            ++entry_count;
+        ::closedir(counter);
+    }
+    const bool log_everything = (entry_count <= 40);
+
     struct dirent* ent;
     while ((ent = ::readdir(dp)) != nullptr)
     {
@@ -363,7 +375,8 @@ void ProbeDirectory(const std::string& dir)
 
         // 只详细记录"可疑"的条目：含非 ASCII 字节的，或者 stat 不到的。
         // 名字里带下划线的也算——如果非 ASCII 被替换成了 '_'，特征就在这里
-        bool suspicious = high || !ok || name.find('_') != std::string::npos;
+        bool suspicious = log_everything || high || !ok
+                          || name.find('_') != std::string::npos;
         if (suspicious && detail_budget > 0)
         {
             --detail_budget;
@@ -385,6 +398,12 @@ void ProbeNetwork(CCurlHttpClient& http)
 
     Logf("");
     Logf("---- 网络与 TLS 自检 ----");
+    // 时钟单独打出来：证书验证失败十有八九是这里的问题
+    SystemClock::DateTime now = SystemClock::Now();
+    Logf("  系统时间      : %s（读取%s）%s",
+         SystemClock::FormatFull(now).c_str(), now.valid ? "成功" : "失败",
+         SystemClock::IsClockImplausible() ? "  <== 与构建年份差距过大，很可能不准" : "");
+    Logf("  构建年份      : %d", SystemClock::GetBuildYear());
     Logf("  网络可用      : %s", CCurlHttpClient::IsNetworkAvailable() ? "是" : "否");
     Logf("  curl 已初始化 : %s", http.IsInited() ? "是" : "否");
     Logf("  证书验证      : %s", http.IsCertVerified() ? "启用" : "未启用（找不到 CA 证书包）");

@@ -82,8 +82,25 @@ void CApp::RestoreLastSession()
     Diag::ProbeDirectory(music_dir);
 
     std::vector<SongInfo> songs;
+    uint32_t scan_start = SDL_GetTicks();
     CMediaScanner::ScanDirectory(music_dir, songs, 3);      // 限制 3 层，避免开机卡太久
-    Diag::Logf("扫描到 %u 首可播放曲目", static_cast<unsigned>(songs.size()));
+    // 逐个文件读标签会明显拖慢扫描，把耗时记下来才知道值不值
+    Diag::Logf("扫描到 %u 首可播放曲目，耗时 %u 毫秒",
+               static_cast<unsigned>(songs.size()), SDL_GetTicks() - scan_start);
+    int tagged = 0;
+    for (const SongInfo& song : songs)
+    {
+        if (!song.IsTagEmpty())
+            ++tagged;
+    }
+    Diag::Logf("其中 %d 首读到了标签", tagged);
+    for (size_t i = 0; i < songs.size() && i < 8; ++i)
+    {
+        Diag::Logf("  示例 %u: 文件=%s", static_cast<unsigned>(i + 1),
+                   FileUtil::GetFileName(songs[i].file_path).c_str());
+        Diag::Logf("           标题=%s  艺术家=%s", songs[i].title.c_str(),
+                   songs[i].artist.c_str());
+    }
     if (!songs.empty())
         m_player.SetPlaylist(std::move(songs), 0, false);
 }

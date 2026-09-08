@@ -1,5 +1,6 @@
 #include "HttpClient.h"
 #include "SocketGuard.h"
+#include "../SystemClock.h"
 #include "../core/FileUtil.h"
 
 #include <switch.h>
@@ -32,6 +33,28 @@ namespace
         }
         ctx->buffer->append(data, total);
         return total;
+    }
+}
+
+
+namespace
+{
+    // 证书验证失败最常见的原因其实是系统时间不对：时间偏得远了，
+    // 证书会被判成尚未生效或已过期，而 curl 只会报一句"证书验证失败"，
+    // 用户根本联想不到时钟。这里主动把这层意思补出来。
+    std::string TlsFailureHint(int curl_code)
+    {
+        const int kPeerFailedVerification = 60;
+        const int kCaCertBadFile = 77;
+        if (curl_code == kCaCertBadFile)
+            return "（CA 证书包读不出来）";
+        if (curl_code != kPeerFailedVerification)
+            return std::string();
+        if (!SystemClock::IsClockImplausible())
+            return std::string();
+        SystemClock::DateTime now = SystemClock::Now();
+        return "（系统时间为 " + SystemClock::FormatFull(now)
+             + "，证书可能因此被判为过期，请先校准主机时间）";
     }
 }
 
@@ -199,7 +222,8 @@ bool CCurlHttpClient::Perform(const std::string& url, const std::string* post_bo
             // 77（CA 文件读不出来）原因完全不同，只看文案分不出来
             char buff[32];
             std::snprintf(buff, sizeof(buff), "[curl %d] ", static_cast<int>(code));
-            out.error = std::string(buff) + curl_easy_strerror(code);
+            out.error = std::string(buff) + curl_easy_strerror(code)
+                      + TlsFailureHint(static_cast<int>(code));
         }
         out.body.clear();
         return false;
@@ -349,7 +373,8 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
         {
             char buff[32];
             std::snprintf(buff, sizeof(buff), "[curl %d] ", static_cast<int>(code));
-            error = std::string(buff) + curl_easy_strerror(code);
+            error = std::string(buff) + curl_easy_strerror(code)
+                  + TlsFailureHint(static_cast<int>(code));
         }
         else
         {

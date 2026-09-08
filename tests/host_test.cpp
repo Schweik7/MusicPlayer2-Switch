@@ -20,6 +20,7 @@
 // 在 net_test.cpp / audio_test.cpp 中实现
 void RunNetTests();
 void RunAudioTests();
+void RunTagTests();
 
 
 // ---------------------------------------------------------------- StringUtil
@@ -526,6 +527,7 @@ int main()
     RunAudioTests();
 
     std::printf("\n--- 在线下载 ---\n");
+    RunTagTests();
     RunNetTests();
 
     const int total = TestFramework::g_total;

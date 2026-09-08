@@ -119,6 +119,34 @@ void CBrowserScreen::EnsureSelectionVisible(int visible_count)
     m_scroll = std::max(0, m_scroll);
 }
 
+void CBrowserScreen::SetAsMusicDir(ScreenContext& ctx)
+{
+    CPlayer& player = *ctx.player;
+    player.GetConfig().SetMusicDir(m_dir);
+    player.GetPathMapper().SetDefaultMusicDir(m_dir);
+    // 立刻落盘。配置原先只在退出时写，中途断电或崩溃这次设置就白做了；
+    // 而且在没有 fsdevCommitDevice 之前，那次写入根本没到 SD 卡上——
+    // 这正是"按了 Y 没反应"的直接原因。
+    player.SaveConfig();
+
+    // 光改配置对当前这次运行毫无可见效果（只影响下次启动、且要求没有上次的播放列表），
+    // 用户自然会觉得这个键坏了。所以顺手把这个目录扫进播放列表。
+    std::vector<SongInfo> songs;
+    CMediaScanner::ScanDirectory(m_dir, songs, 3);
+    if (songs.empty())
+    {
+        ctx.ShowToast("已设为默认音乐目录（目录内没有可播放的音频）");
+        return;
+    }
+
+    // 不自动播放：用户按 Y 的意图是"以后从这里找歌"，不是"马上放"
+    player.SetPlaylist(std::move(songs), 0, false);
+    char message[128];
+    std::snprintf(message, sizeof(message), "已设为默认音乐目录，载入 %d 首",
+                  player.GetPlaylistSize());
+    ctx.ShowToast(message);
+}
+
 void CBrowserScreen::PlayCurrentDirectory(ScreenContext& ctx, bool from_selection)
 {
     std::vector<SongInfo> songs;
@@ -244,11 +272,7 @@ void CBrowserScreen::Update(ScreenContext& ctx, double delta_seconds)
     }
 
     if (input.IsDown(CInputMap::BTN_Y))
-    {
-        ctx.player->GetConfig().SetMusicDir(m_dir);
-        ctx.player->GetPathMapper().SetDefaultMusicDir(m_dir);
-        ctx.ShowToast("已设为默认音乐目录");
-    }
+        SetAsMusicDir(ctx);
 
     if (touch_scrolled)
     {

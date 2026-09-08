@@ -23,8 +23,12 @@ public:
 
     // 同步扫描（单元测试与小目录用）。max_depth 为负表示不限制。
     static void ScanDirectory(const std::string& dir, std::vector<SongInfo>& result,
-                              int max_depth = -1, const std::atomic<bool>* cancel = nullptr);
+                              int max_depth = -1, const std::atomic<bool>* cancel = nullptr,
+                              bool read_file_tags = true);
 
     // 从文件名推断标题与艺术家：优先 "艺术家 - 标题"，否则整体作为标题
     static void FillTagFromFileName(SongInfo& song);
+    // 填充曲目信息：先读文件内的标签，缺什么再用文件名补。
+    // read_file_tags 为 false 时只用文件名（浏览目录时不必为每个文件读盘）。
+    static void FillTag(SongInfo& song, bool read_file_tags);
 };
