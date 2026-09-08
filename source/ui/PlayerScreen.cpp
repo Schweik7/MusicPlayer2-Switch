@@ -978,31 +978,33 @@ void CPlayerScreen::DrawStickCross(ScreenContext& ctx)
         }
     }
 
-    // 中心显示音量：喇叭 + 数字，不写百分号。
+    // 中心那格：喇叭在上、数字在下，两者各自水平居中。
     //
     // 喇叭的号角要"左窄右宽"：三角形的尖端贴在箱体上、竖边在外侧。
     // 反过来画（尖端朝右）出来就是个播放箭头，认不出是喇叭。
+    //
+    // 图标宽度固定成 12 像素（不随音量增减声波数量），否则居中的位置会跟着跳。
+    const int kIconWidth = 12;
     const Color speaker = (volume == 0) ? Theme::kTextDisabled : Theme::kTextDim;
-    const int icon_x = kStickHub.x + 8;
-    const int icon_y = kStickHub.y + 17;
-    r.FillRect(icon_x, icon_y - 3, 4, 7, speaker);                       // 箱体
-    r.FillTriangle(icon_x + 3, icon_y, icon_x + 9, icon_y - 8, icon_x + 9, icon_y + 8, speaker);
+    const int icon_x = kStickHub.x + (kStickHub.w - kIconWidth) / 2;
+    const int icon_y = kStickHub.y + 16;
+
+    r.FillRect(icon_x, icon_y - 3, 4, 7, speaker);                          // 箱体
+    r.FillTriangle(icon_x + 3, icon_y, icon_x + 8, icon_y - 7, icon_x + 8, icon_y + 7, speaker);
     if (volume == 0)
     {
-        r.DrawLine(icon_x + 11, icon_y - 5, icon_x + 16, icon_y + 5, Theme::kHighlight);
-        r.DrawLine(icon_x + 16, icon_y - 5, icon_x + 11, icon_y + 5, Theme::kHighlight);
+        // 静音画个叉，压在号角右侧
+        r.DrawLine(icon_x + 8, icon_y - 5, icon_x + 13, icon_y + 5, Theme::kHighlight);
+        r.DrawLine(icon_x + 13, icon_y - 5, icon_x + 8, icon_y + 5, Theme::kHighlight);
     }
     else
     {
-        // 两道声波弧线，用短竖线近似
-        r.DrawLine(icon_x + 12, icon_y - 4, icon_x + 12, icon_y + 4, speaker);
-        if (volume >= 50)
-            r.DrawLine(icon_x + 15, icon_y - 6, icon_x + 15, icon_y + 6, speaker);
+        r.DrawLine(icon_x + 11, icon_y - 4, icon_x + 11, icon_y + 4, speaker);   // 声波
     }
 
     char volume_text[16];
     std::snprintf(volume_text, sizeof(volume_text), "%d", volume);
-    r.DrawText(volume_text, kStickHub.x + kStickHub.w / 2, kStickHub.y + 24,
+    r.DrawText(volume_text, kStickHub.x + kStickHub.w / 2, kStickHub.y + 26,
                CRenderer::FS_SMALL, Theme::kTextDim, CRenderer::ALIGN_CENTER);
 
     // 逐秒进退这两个键没有数字说明，标一行免得被当成上一曲/下一曲。

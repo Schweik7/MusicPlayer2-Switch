@@ -66,6 +66,14 @@ public:
     // 必须先 StartCheck 并得到 ST_UPDATE_AVAILABLE 才能调用
     bool StartInstall();
 
+    // 启动时调用一次：把上次下载好的新版本换上去。
+    //
+    // 为什么不在下载完当场换：实机上替换正在运行的 NRO 一直失败，而那个流程
+    // 需要先把自己改名挪走，中途失败时程序位置上是空的。启动时这一份镜像
+    // 已经读进内存了，覆盖磁盘文件不影响当前进程，风险小得多。
+    // 返回一句给用户看的话；没有待应用的更新时返回空串。
+    std::string ApplyPendingUpdate();
+
     Status Poll() const;
     void Cancel();
     // 关闭网络栈之前必须调用，否则工作线程会用到已被清理的 curl
@@ -73,6 +81,8 @@ public:
     void Reset();
 
     const std::string& GetSelfPath() const { return m_self_path; }
+    // 下载好但还没应用的新版本放在哪
+    std::string GetPendingPath() const { return m_self_path + ".new"; }
 
     // 比较两个版本号（形如 "0.4.0" 或 "v0.4.0"）。
     // 返回 true 表示 remote 比 local 新。抽成静态函数是为了能单独测。

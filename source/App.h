@@ -82,6 +82,8 @@ private:
     Rect m_playlist_button;
 
     std::string m_self_path;
+    // 启动时应用待装更新的结果，进入播放界面后提示一次
+    std::string m_pending_update_note;
     // 上一帧观察到的下载状态，用于识别"刚刚完成"这个瞬间
     int m_last_download_state{};
     uint32_t m_scan_start_ticks{};

@@ -84,6 +84,10 @@ bool CApp::Init()
 
     m_updater.Init(&m_player.GetHttpClient(), m_self_path);
     m_settings_screen.SetUpdater(&m_updater);
+
+    // 上次下载好的新版本在这一刻换上去：现在这份镜像已经读进内存了，
+    // 覆盖磁盘上的文件不影响当前进程。运行中途换是换不动的。
+    m_pending_update_note = m_updater.ApplyPendingUpdate();
     m_settings_screen.SetApp(this);
 
     m_ctx.player = &m_player;
@@ -96,6 +100,8 @@ bool CApp::Init()
 
     m_current = SCREEN_PLAYER;
     m_screens[m_current]->OnEnter(m_ctx);
+    if (!m_pending_update_note.empty())
+        m_ctx.ShowToast(m_pending_update_note);
 
     m_boot_timings.push_back(BootStageTime{ "合计", SDL_GetTicks() - m_boot_start_ticks });
     Diag::Logf("启动合计 %u 毫秒", m_boot_timings.back().ms);

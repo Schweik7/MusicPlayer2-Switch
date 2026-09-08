@@ -415,17 +415,25 @@ void CSettingsScreen::DrawUpdateStatus(ScreenContext& ctx, int x, int y, int wid
     }
     else if (status.state == CUpdater::ST_UPDATE_AVAILABLE)
     {
-        if (status.asset_verified)
-        {
-            r.DrawText("按 A 下载并安装", x, y + 26, CRenderer::FS_SMALL, Theme::kTextDim);
-        }
-        else
+        // 把"下载完还要重启"这件事说在按 A 之前。
+        // 运行中途换不动正在使用的 NRO，所以更新是下载 + 重启两步，
+        // 不提前讲清楚，用户会以为按完就装好了。
+        r.DrawText("按 A 下载 · 下载后需重启应用才能生效", x, y + 26,
+                   CRenderer::FS_SMALL, Theme::kTextDim);
+        if (!status.asset_verified)
         {
             // 明文 http 的下载地址验不了服务器身份，装的是一个来路无法确认的
             // 可执行文件。这话必须说在按 A 之前。
-            r.DrawText("按 A 下载并安装 · 来自备用源，无法验证服务器身份",
-                       x, y + 26, CRenderer::FS_SMALL, Theme::kHighlight);
+            r.DrawText("来自备用源，无法验证服务器身份", x, y + 52,
+                       CRenderer::FS_SMALL, Theme::kHighlight);
         }
+    }
+    else if (status.state == CUpdater::ST_INSTALLED && m_updater != nullptr)
+    {
+        // 万一重启后仍然换不动，这行给出可手动操作的下一步
+        r.DrawTextEllipsis("若重启后仍未生效，把 " + m_updater->GetPendingPath()
+                           + " 改名为 " + m_updater->GetSelfPath() + " 即可",
+                           x, y + 26, width, CRenderer::FS_SMALL, Theme::kTextDisabled);
     }
 }
 

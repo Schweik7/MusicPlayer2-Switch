@@ -328,48 +328,62 @@ void CUpdater::DoInstall()
         return;
     }
 
-    // 替换自身。先把旧文件挪到备份名，确认新文件就位后再删备份；
-    // 中途任何一步失败都要把旧文件放回去，否则程序就没了。
+    // 到这里新版本已经完整地躺在 temp_path 上了，但**不在运行时替换自身**。
     //
-    // 改名和复制都试：实机上 std::rename 会失败（用户遇到过"无法备份当前版本"），
-    // Switch 的 FS 层对改名的支持并不可靠。复制慢一些但一定能用。
+    // 实机上替换正在运行的 NRO 一直失败。原来的做法是先把自己改名成 .bak
+    // 再把新文件挪过去——失败时还得回滚，而那一小段窗口里程序位置上是空的，
+    // 一旦回滚也失败，用户手上就没有能启动的 NRO 了。为了一个从没成功过的操作
+    // 冒这个险不值得。
+    //
+    // 改成下次启动时再应用（见 ApplyPendingUpdate）：那时这一份镜像早已读进内存，
+    // 覆盖磁盘上的文件不影响当前进程。真在启动时也换不动的话，
+    // 文件仍然留在那里，手动改个名就能用。
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_status.state = ST_INSTALLED;
+    m_status.message = "已下载 " + m_status.latest_version + "，重启应用即可完成更新";
+}
+
+std::string CUpdater::ApplyPendingUpdate()
+{
+    const std::string temp_path = m_self_path + ".new";
+    if (!FileUtil::Exists(temp_path))
+        return std::string();
+
+    // 半截文件、下错的东西都不能拿来替换程序
+    const uint64_t size = FileUtil::GetFileSize(temp_path);
+    if (!LooksLikeNro(temp_path) || size < 1024 * 1024)
+    {
+        std::remove(temp_path.c_str());
+        return "更新文件不完整，已丢弃";
+    }
+
+    const std::string backup_path = m_self_path + ".bak";
     std::remove(backup_path.c_str());
+
     const bool had_old = FileUtil::Exists(m_self_path);
     if (had_old && !FileUtil::MoveOverwrite(m_self_path, backup_path))
     {
-        std::remove(temp_path.c_str());
-        SetStatus(ST_FAILED, "无法备份当前版本，已放弃更新（errno=" + std::to_string(errno) + "）");
-        return;
+        return "更新已就绪，但换不动正在使用的文件。退出后把 " + temp_path
+             + " 改名为 " + m_self_path + " 即可";
     }
 
     if (!FileUtil::MoveOverwrite(temp_path, m_self_path))
     {
         RestoreBackup(had_old, backup_path);
-        // 下载好的文件留着不删：重新下一次要好几分钟，而它本身是完整的。
-        SetStatus(ST_FAILED, std::string("无法写入新版本（errno=") + std::to_string(errno)
-                             + "）。已下载好的文件留在 " + temp_path
-                             + "，可以手动改名替换");
-        return;
+        return "更新已就绪，但写不进去。退出后把 " + temp_path + " 改名为 "
+             + m_self_path + " 即可";
     }
 
-    // 换上去之后再核对一次。改名或复制都可能"成功返回"却只写了一半，
+    // 换上去之后核对大小。改名或复制都可能"成功返回"却只写了一半，
     // 而这一步写坏的是程序自己——下次就再也启动不了了。
-    const uint64_t installed = FileUtil::GetFileSize(m_self_path);
-    if (expected_size > 0 && installed != expected_size)
+    if (FileUtil::GetFileSize(m_self_path) != size)
     {
         RestoreBackup(had_old, backup_path);
-        SetStatus(ST_FAILED, "写入后校验不通过（" + std::to_string(installed) + " / 应为 "
-                             + std::to_string(expected_size) + " 字节），已还原原有版本");
-        return;
+        return "更新写入后校验不通过，已还原原有版本";
     }
 
-    // 校验通过才删备份
     std::remove(backup_path.c_str());
-    // 整个替换过程都要提交，否则 SD 卡上留下的是个大小为 0 的坏 NRO，
-    // 下次就再也启动不了了
+    // 必须提交，否则 SD 卡上留下的是个大小为 0 的坏 NRO，下次就再也启动不了了
     FileUtil::CommitDevice(m_self_path);
-
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_status.state = ST_INSTALLED;
-    m_status.message = "已更新到 " + m_status.latest_version + "，请退出后重新启动";
+    return "已应用新版本，重新启动后生效";
 }
