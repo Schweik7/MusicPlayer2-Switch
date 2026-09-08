@@ -219,19 +219,19 @@ stat -c%s SwitchPort/MusicPlayer2.nro
 
 ### 6.4 同步到备用源
 
-GitHub 在部分地区访问不稳定，所以更新检查失败时会回退到一个自建的镜像。
-发完 GitHub Release 之后要把同一份 NRO 同步过去：
+GitHub 在部分地区访问不稳定，所以更新检查失败时会回退到自建镜像
+`https://download.psyventures.cn/mp2/`。发完 GitHub Release 之后同步过去：
 
 ```bash
-scp SwitchPort/MusicPlayer2.nro root@<主机>:/var/www/mp2/
-ssh root@<主机> "cat > /var/www/mp2/latest.json" <<'JSON'
+scp SwitchPort/MusicPlayer2.nro root@<主机>:/var/www/download/mp2/
+ssh root@<主机> "cat > /var/www/download/mp2/latest.json" <<'JSON'
 {
-  "tag_name": "v0.6.3",
+  "tag_name": "v0.6.4",
   "body": "……更新说明……",
   "assets": [{
     "name": "MusicPlayer2.nro",
-    "size": 10895681,
-    "browser_download_url": "http://<主机>:8888/MusicPlayer2.nro"
+    "size": 10899777,
+    "browser_download_url": "https://download.psyventures.cn/mp2/MusicPlayer2.nro"
   }]
 }
 JSON
@@ -242,11 +242,32 @@ JSON
 
 镜像地址写在 `source/Version.h` 的 `MP2_SWITCH_MIRROR_URL`。
 
-**关于明文 HTTP**：备用源现在没有域名，只能按 IP 走 http。
-这意味着无法验证服务器身份，路径上的任何人都能替换掉那个会被执行的 NRO。
-程序为此做了两件事：下载地址不是 `https://` 开头时关闭证书校验（否则必然失败），
-同时在界面上明确写出"来自备用源，无法验证服务器身份"。
-换成 https 之后这两处都会自动恢复成强校验，不需要改代码。
+#### 服务器上的两条路
+
+同一份文件同时通过两个入口提供，nginx 配置在 `/etc/nginx/sites-available/mp2-mirror`：
+
+| 入口 | 用途 |
+| --- | --- |
+| `https://download.psyventures.cn/...` | 正式地址，Let's Encrypt 证书，certbot 自动续期 |
+| `http://39.99.245.245:8888/...` | 明文端口，域名解析不可用时兜底 |
+
+8888 这个端口号不是随便挑的：阿里云安全组只放行了若干区间，
+6742 之类的端口在外网直接超时。判断方法是从外网连一下——
+被安全组挡住是超时，端口开放但没服务是立刻拒绝。
+
+8888 上还留了两条 `location =`，把根路径的 `/latest.json` 和 `/MusicPlayer2.nro`
+指到 `mp2/` 子目录下。0.6.3 那一版把这两个地址写死在根上了，
+文件后来归到子目录，这两条保证那批已发出去的版本还能更新。
+
+#### 为什么镜像一定要走 https
+
+明文 HTTP 下发一个会被执行的 NRO，等于把"装什么程序"交给网络路径上的任何人。
+`CUpdater` 对此的处理是：下载地址不是 `https://` 开头时关闭证书校验
+（否则必然失败），同时把 `Status::asset_verified` 置为 false，
+设置界面据此显示"来自备用源，无法验证服务器身份"。
+
+这是退路不是常态。romfs 里的 CA 包含 ISRG Root X1/X2，
+所以 Let's Encrypt 签的证书能直接验通。
 
 ### 6.5 更新功能依赖的约定
 
