@@ -1,6 +1,6 @@
 #include "Updater.h"
 #include "HttpClient.h"
-#include "Json.h"
+#include "ReleaseInfo.h"
 #include "../Version.h"
 #include "../core/FileUtil.h"
 #include "../core/VersionUtil.h"
@@ -144,56 +144,35 @@ void CUpdater::DoCheck()
     if (m_cancel.load())
         return;
 
-    JsonValue json;
-    std::string parse_error;
-    if (!JsonValue::Parse(response.body, json, &parse_error))
+    ReleaseInfo::Info info;
+    std::string error;
+    if (!ReleaseInfo::Parse(response.body, MP2_SWITCH_ASSET_NAME, info, error))
     {
-        SetStatus(ST_FAILED, "无法解析 GitHub 返回的数据");
+        SetStatus(ST_FAILED, "检查更新失败：" + error);
         return;
-    }
-
-    std::string tag = json.GetString("tag_name");
-    if (tag.empty())
-    {
-        SetStatus(ST_FAILED, "该仓库还没有发布任何版本");
-        return;
-    }
-
-    // 在 assets 里找我们的 NRO
-    std::string asset_url;
-    uint64_t asset_size = 0;
-    const JsonValue& assets = json["assets"];
-    for (size_t i = 0; i < assets.Size(); ++i)
-    {
-        if (assets[i].GetString("name") == MP2_SWITCH_ASSET_NAME)
-        {
-            asset_url = assets[i].GetString("browser_download_url");
-            asset_size = static_cast<uint64_t>(assets[i].GetInt("size"));
-            break;
-        }
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_status.latest_version = tag;
-    m_status.release_notes = json.GetString("body");
-    m_status.asset_url = asset_url;
-    m_status.total = asset_size;
+    m_status.latest_version = info.tag;
+    m_status.release_notes = info.notes;
+    m_status.asset_url = info.asset_url;
+    m_status.total = info.asset_size;
 
-    if (!IsNewerVersion(tag, MP2_SWITCH_VERSION))
+    if (!IsNewerVersion(info.tag, MP2_SWITCH_VERSION))
     {
         m_status.state = ST_UP_TO_DATE;
         m_status.message = "已是最新版本（" MP2_SWITCH_VERSION "）";
     }
-    else if (asset_url.empty())
+    else if (info.asset_url.empty())
     {
         // 有新版本但没带 NRO，只能让用户自己去下
         m_status.state = ST_FAILED;
-        m_status.message = "发现 " + tag + "，但该版本没有附带 " MP2_SWITCH_ASSET_NAME;
+        m_status.message = "发现 " + info.tag + "，但该版本没有附带 " MP2_SWITCH_ASSET_NAME;
     }
     else
     {
         m_status.state = ST_UPDATE_AVAILABLE;
-        m_status.message = "发现新版本 " + tag;
+        m_status.message = "发现新版本 " + info.tag;
     }
 }
 

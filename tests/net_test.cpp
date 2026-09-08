@@ -4,6 +4,8 @@
 
 #include "TestFramework.h"
 #include "../source/core/VersionUtil.h"
+#include "../source/net/ReleaseInfo.h"
+#include "github_release_fixture.h"
 
 #include "../source/core/FileUtil.h"
 #include "../source/core/LrcParser.h"
@@ -820,6 +822,53 @@ static void TestVersionUtil()
     CHECK(VersionUtil::IsNewer("v1.2.0-beta", "1.1.9"));
 }
 
+static void TestReleaseInfo()
+{
+    // 用 std::puts 而不是 printf：省掉一个反斜杠转义
+    std::puts("ReleaseInfo");
+
+    ReleaseInfo::Info info;
+    std::string error;
+
+    // ---- 真实响应 ----
+    CHECK(ReleaseInfo::Parse(kGithubReleaseResponse, "MusicPlayer2.nro", info, error));
+    CHECK_EQ(error, std::string());
+    CHECK_EQ(info.tag, std::string("v0.4.0"));
+    CHECK_EQ(info.asset_url,
+             std::string("https://github.com/Schweik7/MusicPlayer2/releases/download/"
+                         "v0.4.0/MusicPlayer2.nro"));
+    CHECK_EQ_INT(static_cast<long long>(info.asset_size), 10800541);
+    CHECK(!info.notes.empty());
+    // 正文里有中文，解析不能把多字节字符弄坏
+    CHECK(info.notes.find(u8"Nintendo Switch") != std::string::npos);
+
+    // ---- 有版本但没有目标资产：不算失败，但 asset_url 为空 ----
+    ReleaseInfo::Info missing;
+    CHECK(ReleaseInfo::Parse(kGithubReleaseResponse, "NotThere.nro", missing, error));
+    CHECK_EQ(missing.tag, std::string("v0.4.0"));
+    CHECK(missing.asset_url.empty());
+    CHECK_EQ_INT(static_cast<long long>(missing.asset_size), 0);
+
+    // ---- GitHub 的错误响应要把 message 透出来，而不是笼统报"没有 tag_name" ----
+    ReleaseInfo::Info err_info;
+    CHECK(!ReleaseInfo::Parse("{\"message\": \"Not Found\", \"status\": \"404\"}",
+                              "MusicPlayer2.nro", err_info, error));
+    CHECK_EQ(error, std::string("Not Found"));
+
+    // ---- 无效输入 ----
+    CHECK(!ReleaseInfo::Parse("", "MusicPlayer2.nro", err_info, error));
+    CHECK(!ReleaseInfo::Parse("<html>502 Bad Gateway</html>", "MusicPlayer2.nro",
+                              err_info, error));
+    CHECK(!ReleaseInfo::Parse("{}", "MusicPlayer2.nro", err_info, error));
+    // 仓库一个 release 都没有时 GitHub 返回 404，上面那条已覆盖；
+    // 这里再确认 assets 缺失也不会崩
+    ReleaseInfo::Info no_assets;
+    CHECK(ReleaseInfo::Parse("{\"tag_name\": \"v9.9.9\"}", "MusicPlayer2.nro",
+                             no_assets, error));
+    CHECK_EQ(no_assets.tag, std::string("v9.9.9"));
+    CHECK(no_assets.asset_url.empty());
+}
+
 void RunNetTests()
 {
     TestJson();
@@ -831,4 +880,5 @@ void RunNetTests()
     TestLyricProviderUtil();
     TestDownloadManager();
     TestVersionUtil();
+    TestReleaseInfo();
 }

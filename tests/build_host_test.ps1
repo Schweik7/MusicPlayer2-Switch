@@ -41,6 +41,7 @@ $sources = @(
     (Join-Path $coreDir 'Config.cpp')
 (Join-Path $coreDir 'VersionUtil.cpp')
     (Join-Path $netDir  'Json.cpp')
+(Join-Path $netDir  'ReleaseInfo.cpp')
     (Join-Path $netDir  'UrlUtil.cpp')
     (Join-Path $netDir  'SongMatcher.cpp')
     (Join-Path $netDir  'LyricProvider.cpp')
