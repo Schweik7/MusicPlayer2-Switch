@@ -24,7 +24,7 @@
 
 ## 安装
 
-1. 从 [Releases](https://github.com/Schweik7/MusicPlayer2/releases) 下载 `MusicPlayer2.nro`
+1. 从 [Releases](https://github.com/Schweik7/MusicPlayer2-Switch/releases) 下载 `MusicPlayer2.nro`
 2. 放到 SD 卡的 `/switch/` 目录
 3. 从 hbmenu 启动
 

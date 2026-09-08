@@ -2,11 +2,16 @@
 
 // 版本号与 GitHub Release 的 tag 对应：更新检查就是拿 tag_name 和它比。
 // 发版时这里和 tag 必须一起改。
-#define MP2_SWITCH_VERSION "0.7.7"
+#define MP2_SWITCH_VERSION "0.8.0"
 
+// 移植版从 Schweik7/MusicPlayer2（上游的 fork）搬到了自己的仓库。
+//
+// 过渡期两个仓库都要发同一份 Release：装在用户机器上的 0.7.x 查的还是旧仓库，
+// 只有让它们能更新到这一版，之后才会跟着换到新仓库。
+// 备用源不受影响——它按 URL 取，和仓库无关。
 #define MP2_SWITCH_REPO_OWNER "Schweik7"
-#define MP2_SWITCH_REPO_NAME  "MusicPlayer2"
-#define MP2_SWITCH_REPO_URL   "https://github.com/Schweik7/MusicPlayer2"
+#define MP2_SWITCH_REPO_NAME  "MusicPlayer2-Switch"
+#define MP2_SWITCH_REPO_URL   "https://github.com/Schweik7/MusicPlayer2-Switch"
 
 // Release 里 NRO 资产的文件名，更新时按它在 assets 里查找
 #define MP2_SWITCH_ASSET_NAME "MusicPlayer2.nro"

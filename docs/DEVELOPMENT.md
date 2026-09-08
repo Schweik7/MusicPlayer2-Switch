@@ -176,6 +176,23 @@ curl "ftp://<IP>:<PORT>/config/MusicPlayer2/diag.log" -o diag.log
 
 ## 6. 发版
 
+### 6.0 发到哪里
+
+移植版住在 [Schweik7/MusicPlayer2-Switch](https://github.com/Schweik7/MusicPlayer2-Switch)，
+从上游的 fork（`Schweik7/MusicPlayer2`）里用 `git subtree split -P SwitchPort` 拆出来的，
+历史原样保留。
+
+每个版本要发三处：
+
+| 目标 | 为什么 |
+| --- | --- |
+| 新仓库的 Release | 主源，`Version.h` 里的 `MP2_SWITCH_REPO_NAME` 指向它 |
+| 备用源 | GitHub 连不上时的回退，见 6.4 |
+| 旧仓库的 Release | **只在过渡期需要**：装在用户机器上的 0.7.x 查的还是旧仓库 |
+
+第三条什么时候可以停：确认没人再用 0.7.x 之后。改仓库名这件事天然有这个尾巴——
+做替换的永远是旧版本的代码。
+
 ### 6.1 改版本号（两处，必须一起改）
 
 | 位置 | 用途 |
