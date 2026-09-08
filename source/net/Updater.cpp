@@ -102,10 +102,11 @@ void CUpdater::RunTask(void (CUpdater::*task)())
     });
 }
 
-bool CUpdater::StartCheck()
+bool CUpdater::StartCheck(Source source)
 {
     if (m_busy.load() || m_http == nullptr)
         return false;
+    m_source = source;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_status = Status();
@@ -166,17 +167,27 @@ bool CUpdater::QueryRelease(const std::string& url, bool from_mirror, std::strin
 void CUpdater::DoCheck()
 {
     std::string error;
-    bool ok = QueryRelease(kApiUrl, false, error);
+    bool ok = false;
 
-    // GitHub 在部分地区连不上，回退到备用源。
-    // 注意只在"没拿到结果"时回退：拿到了但版本更旧不算失败。
-    if (!ok && !m_cancel.load())
+    // 指定了只用备用源就不去碰 GitHub。
+    // GitHub 在部分地区要等到超时才失败，那十几秒是白等的——
+    // 知道自己连不上的用户应该能直接跳过它。
+    if (m_source == SRC_MIRROR)
     {
-        std::string mirror_error;
-        if (QueryRelease(MP2_SWITCH_MIRROR_URL, true, mirror_error))
-            ok = true;
-        else
-            error += "；备用源也失败：" + mirror_error;
+        ok = QueryRelease(MP2_SWITCH_MIRROR_URL, true, error);
+    }
+    else
+    {
+        ok = QueryRelease(kApiUrl, false, error);
+        // 只在"没拿到结果"时回退：拿到了但版本更旧不算失败
+        if (!ok && m_source == SRC_AUTO && !m_cancel.load())
+        {
+            std::string mirror_error;
+            if (QueryRelease(MP2_SWITCH_MIRROR_URL, true, mirror_error))
+                ok = true;
+            else
+                error += "；备用源也失败：" + mirror_error;
+        }
     }
 
     if (m_cancel.load())
@@ -257,7 +268,7 @@ void CUpdater::DoInstall()
     //
     // 原来只有"检查更新"会回退，下载不会——但 GitHub 的资产下载走的是另一个 CDN，
     // 恰恰是最容易连上之后半路断掉的那一环：接口查得到新版本，文件却下不全。
-    if (!ok && !from_mirror && !m_cancel.load())
+    if (!ok && !from_mirror && m_source == SRC_AUTO && !m_cancel.load())
     {
         std::remove(temp_path.c_str());
         SetStatus(ST_DOWNLOADING, "主源下载失败，改用备用源…");

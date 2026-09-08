@@ -64,6 +64,26 @@ namespace
         return std::to_string(seconds) + " 秒";
     }
 
+    std::string UpdateSourceText(CConfig::UpdateSource source)
+    {
+        switch (source)
+        {
+        case CConfig::US_GITHUB: return "仅 GitHub";
+        case CConfig::US_MIRROR: return "仅备用源（更快）";
+        default:                 return "自动（GitHub 优先）";
+        }
+    }
+
+    CUpdater::Source ToUpdaterSource(CConfig::UpdateSource source)
+    {
+        switch (source)
+        {
+        case CConfig::US_GITHUB: return CUpdater::SRC_GITHUB;
+        case CConfig::US_MIRROR: return CUpdater::SRC_MIRROR;
+        default:                 return CUpdater::SRC_AUTO;
+        }
+    }
+
     std::string BackgroundText(CConfig::LyricBackground mode)
     {
         switch (mode)
@@ -165,6 +185,10 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
                                                              : "已连接 · 证书未验证";
     m_rows[ITEM_NETWORK].actionable = false;
 
+    m_rows[ITEM_UPDATE_SOURCE].label = "更新源";
+    m_rows[ITEM_UPDATE_SOURCE].value = UpdateSourceText(config.GetUpdateSource());
+    m_rows[ITEM_UPDATE_SOURCE].actionable = true;
+
     m_rows[ITEM_UPDATE].label = "检查更新";
     m_rows[ITEM_UPDATE].value = "当前 " MP2_SWITCH_VERSION;
     m_rows[ITEM_UPDATE].actionable = true;
@@ -261,6 +285,17 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
                             : "下载的歌词封面只保存在歌曲旁边");
         break;
     }
+    case ITEM_UPDATE_SOURCE:
+    {
+        int next = (config.GetUpdateSource() + 1) % CConfig::US_COUNT;
+        config.SetUpdateSource(static_cast<CConfig::UpdateSource>(next));
+        ctx.ShowToast("更新源：" + UpdateSourceText(
+                          static_cast<CConfig::UpdateSource>(next)));
+        // 换了源，上一次的检查结果就不作数了
+        if (m_updater != nullptr && !m_updater->IsBusy())
+            m_updater->Reset();
+        break;
+    }
     case ITEM_UPDATE:
     {
         if (m_updater == nullptr)
@@ -279,7 +314,7 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         else if (!m_updater->IsBusy())
         {
             m_updater->Reset();
-            m_updater->StartCheck();
+            m_updater->StartCheck(ToUpdaterSource(config.GetUpdateSource()));
         }
         break;
     }

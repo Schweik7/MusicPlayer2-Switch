@@ -82,6 +82,24 @@ public:
     }
     void SetLyricBackground(LyricBackground value) { SetInt("lyric_background", value); }
 
+    // 更新源。GitHub 在部分地区连一次要等很久，检查更新会卡住十几秒，
+    // 所以做成可选：知道自己连不上 GitHub 的人可以直接指定备用源。
+    enum UpdateSource
+    {
+        US_AUTO = 0,        // 先试 GitHub，失败再走备用源
+        US_GITHUB,          // 只用 GitHub
+        US_MIRROR,          // 只用备用源
+        US_COUNT
+    };
+    UpdateSource GetUpdateSource() const
+    {
+        int value = GetInt("update_source", US_AUTO);
+        if (value < 0 || value >= US_COUNT)
+            value = US_AUTO;
+        return static_cast<UpdateSource>(value);
+    }
+    void SetUpdateSource(UpdateSource value) { SetInt("update_source", value); }
+
     // 底栏的键位提示条是否隐藏。收起来之后歌词区能多用 64 像素。
     bool GetHideHints() const { return GetBool("hide_hints", false); }
     void SetHideHints(bool b) { SetBool("hide_hints", b); }

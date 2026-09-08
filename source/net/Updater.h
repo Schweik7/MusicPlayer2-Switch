@@ -15,6 +15,14 @@ class CCurlHttpClient;
 class CUpdater
 {
 public:
+    // 从哪里取更新。和 CConfig::UpdateSource 一一对应。
+    enum Source
+    {
+        SRC_AUTO = 0,       // 先试 GitHub，失败再走备用源
+        SRC_GITHUB,
+        SRC_MIRROR
+    };
+
     enum State
     {
         ST_IDLE = 0,
@@ -53,7 +61,8 @@ public:
     void Init(CCurlHttpClient* http, const std::string& self_path);
 
     bool IsBusy() const { return m_busy.load(); }
-    bool StartCheck();
+    // source 决定这次去哪里查，安装时沿用同一个选择
+    bool StartCheck(Source source = SRC_AUTO);
     // 必须先 StartCheck 并得到 ST_UPDATE_AVAILABLE 才能调用
     bool StartInstall();
 
@@ -83,6 +92,9 @@ private:
     void SetStatus(State state, const std::string& message);
 
     CCurlHttpClient* m_http{};
+    // 只在 StartCheck 里写、工作线程里读；两者之间隔着一次线程创建，
+    // 不需要额外同步。
+    Source m_source{ SRC_AUTO };
     std::string m_self_path{ "sdmc:/switch/MusicPlayer2.nro" };
 
     mutable std::mutex m_mutex;

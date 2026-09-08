@@ -38,6 +38,7 @@ private:
         ITEM_BROWSE,
         ITEM_MUSIC_DIR,
         ITEM_NETWORK,
+        ITEM_UPDATE_SOURCE,
         ITEM_UPDATE,
         ITEM_ABOUT,
         ITEM_COUNT
