@@ -7,6 +7,16 @@
 
 > 想改代码？先看 [系统架构](docs/ARCHITECTURE.md) 和 [开发指南](docs/DEVELOPMENT.md)。
 
+![播放界面](docs/images/screenshot1.jpg)
+
+屏幕上三个操作区分别对应方向键、ABXY、左摇杆，形状本身就是键位表。
+
+| 沉浸模式 | 双栏歌词 |
+| --- | --- |
+| ![沉浸模式](docs/images/screenshot2.jpg) | ![双栏歌词](docs/images/screenshot3.jpg) |
+
+关掉触摸即进入沉浸模式：屏上按钮全部收起，封面放大，只剩封面、曲目信息和歌词。
+
 ---
 
 ## 安装
@@ -211,7 +221,7 @@ WAV 的字节率、Ogg 末页的 granule）。devkitPro 带的 SDL_mixer 是 2.0
 | 文档 | 内容 |
 | --- | --- |
 | [系统架构](docs/ARCHITECTURE.md) | 分层、模块职责、关键设计决定、实机测出的平台约束 |
-| [开发指南](docs/DEVELOPMENT.md) | 构建、测试、部署、实机诊断、发版流程 |
+| [开发指南](docs/DEVELOPMENT.md) | 构建、测试、部署、实机诊断、发版、自动更新的实现、上架素材 |
 
 ---
 
