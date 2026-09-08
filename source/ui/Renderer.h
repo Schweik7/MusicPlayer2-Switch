@@ -84,7 +84,14 @@ public:
     // 加载专辑封面。优先用文件内嵌的封面，其次找同名图片、
     // 再其次找目录里的 cover/folder/front.jpg|png。找不到返回 nullptr。
     SDL_Texture* LoadCoverImage(const std::string& audio_file_path);
+    // 直接读一个图片文件（歌词区背景用）。读不了返回 nullptr。
+    SDL_Texture* LoadImageFile(const std::string& path);
     void DrawTexture(SDL_Texture* texture, int x, int y, int w, int h);
+    // 带透明度的版本，用于把图片压成背景
+    void DrawTexture(SDL_Texture* texture, int x, int y, int w, int h, uint8_t alpha);
+    // 按"填满并居中裁切"的方式画：图片长宽比和目标区域不一致时不拉伸变形，
+    // 而是等比放大到能盖住，多出来的部分裁掉。背景图必须这么画。
+    void DrawTextureCover(SDL_Texture* texture, int x, int y, int w, int h, uint8_t alpha);
     void FreeTexture(SDL_Texture* texture);
 
     // 每帧末尾调用：淘汰长时间没用到的文字纹理

@@ -65,6 +65,28 @@ public:
     bool GetEmbedDownloads() const { return GetBool("embed_downloads", false); }
     void SetEmbedDownloads(bool b) { SetBool("embed_downloads", b); }
 
+    // 歌词区背景。0=不用，1=当前曲目的封面，2=数据目录里的 background.jpg
+    enum LyricBackground
+    {
+        LB_NONE = 0,
+        LB_COVER,
+        LB_FILE,
+        LB_COUNT
+    };
+    LyricBackground GetLyricBackground() const
+    {
+        int value = GetInt("lyric_background", LB_NONE);
+        if (value < 0 || value >= LB_COUNT)
+            value = LB_NONE;
+        return static_cast<LyricBackground>(value);
+    }
+    void SetLyricBackground(LyricBackground value) { SetInt("lyric_background", value); }
+
+    // 沉浸模式：把屏幕上的触摸操作区和底栏提示都收起来，只留封面、曲目信息和歌词。
+    // 触摸仍然可用（进度条、拖歌词、点封面），只是不再画那些按钮。
+    bool GetImmersive() const { return GetBool("immersive", false); }
+    void SetImmersive(bool b) { SetBool("immersive", b); }
+
     bool GetShowSpectrum() const { return GetBool("show_spectrum", true); }
     void SetShowSpectrum(bool b) { SetBool("show_spectrum", b); }
 

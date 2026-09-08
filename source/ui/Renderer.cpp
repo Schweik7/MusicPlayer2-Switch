@@ -691,12 +691,66 @@ SDL_Texture* CRenderer::LoadCoverImage(const std::string& audio_file_path)
     return nullptr;
 }
 
+SDL_Texture* CRenderer::LoadImageFile(const std::string& path)
+{
+    if (path.empty() || !FileUtil::Exists(path))
+        return nullptr;
+    SDL_Surface* surface = IMG_Load(path.c_str());
+    if (surface == nullptr)
+        return nullptr;
+    return TextureFromSurface(surface);
+}
+
 void CRenderer::DrawTexture(SDL_Texture* texture, int x, int y, int w, int h)
 {
     if (texture == nullptr)
         return;
     SDL_Rect dst{ x, y, w, h };
     SDL_RenderCopy(m_renderer, texture, nullptr, &dst);
+}
+
+void CRenderer::DrawTexture(SDL_Texture* texture, int x, int y, int w, int h, uint8_t alpha)
+{
+    if (texture == nullptr)
+        return;
+    SDL_SetTextureAlphaMod(texture, alpha);
+    SDL_Rect dst{ x, y, w, h };
+    SDL_RenderCopy(m_renderer, texture, nullptr, &dst);
+    SDL_SetTextureAlphaMod(texture, 255);       // 纹理是共用的，用完要还原
+}
+
+void CRenderer::DrawTextureCover(SDL_Texture* texture, int x, int y, int w, int h, uint8_t alpha)
+{
+    if (texture == nullptr || w <= 0 || h <= 0)
+        return;
+
+    int tex_w = 0, tex_h = 0;
+    if (SDL_QueryTexture(texture, nullptr, nullptr, &tex_w, &tex_h) != 0
+        || tex_w <= 0 || tex_h <= 0)
+    {
+        DrawTexture(texture, x, y, w, h, alpha);
+        return;
+    }
+
+    // 从原图里裁一块和目标区域同长宽比的最大矩形，居中取
+    const double target_ratio = static_cast<double>(w) / h;
+    const double source_ratio = static_cast<double>(tex_w) / tex_h;
+    SDL_Rect src{ 0, 0, tex_w, tex_h };
+    if (source_ratio > target_ratio)
+    {
+        src.w = static_cast<int>(tex_h * target_ratio);
+        src.x = (tex_w - src.w) / 2;
+    }
+    else
+    {
+        src.h = static_cast<int>(tex_w / target_ratio);
+        src.y = (tex_h - src.h) / 2;
+    }
+
+    SDL_SetTextureAlphaMod(texture, alpha);
+    SDL_Rect dst{ x, y, w, h };
+    SDL_RenderCopy(m_renderer, texture, &src, &dst);
+    SDL_SetTextureAlphaMod(texture, 255);
 }
 
 void CRenderer::FreeTexture(SDL_Texture* texture)

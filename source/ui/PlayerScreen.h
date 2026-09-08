@@ -56,13 +56,17 @@ private:
         HIT_TOOL_DOWNLOAD,      // 歌词区右上角：下载歌词/封面
         HIT_TOOL_SYNC,          // 歌词区右上角：拖歌词是否带着进度走
         HIT_TOOL_LAYOUT,        // 歌词区右上角：单栏 / 双栏
-        HIT_OFFSET_MINUS,       // 歌词区左上角：歌词提前
-        HIT_OFFSET_PLUS,        // 歌词区左上角：歌词延后
-        HIT_VOLUME_MINUS,       // 歌词区左上角：音量减
-        HIT_VOLUME_PLUS         // 歌词区左上角：音量加
+        HIT_VOLUME_MINUS,       // 左摇杆十字：下 = 音量减
+        HIT_VOLUME_PLUS,        // 左摇杆十字：上 = 音量加
+        HIT_SEEK_BACK,          // 左摇杆十字：左 = 后退 1 秒
+        HIT_SEEK_FORWARD        // 左摇杆十字：右 = 前进 1 秒
     };
 
     void DrawCover(ScreenContext& ctx);
+    // 歌词区背景图。压得很暗，否则歌词读不清——它是背景不是主角。
+    void DrawLyricBackground(ScreenContext& ctx, int x, int y, int width, int height);
+    // 背景图用的纹理，按设置和当前曲目决定；换歌或改设置时重新加载
+    void RefreshBackground(ScreenContext& ctx);
     void DrawSongInfo(ScreenContext& ctx);
     // "第几首 / 共几首"。画在右栏左下角而不是左栏，左栏那一行的高度让给了封面。
     void DrawTrackCounter(ScreenContext& ctx);
@@ -72,13 +76,9 @@ private:
     void DrawFaceButtons(ScreenContext& ctx);
     // 歌词区右上角的两个小按钮
     void DrawLyricTools(ScreenContext& ctx);
-    // 歌词区左上角的操作区：歌词偏移和音量，各自一组"减 · 读数 · 加"。
+    // 歌词区左上角的左摇杆十字：上下音量、左右逐秒进退，中心显示音量。
     // 和左下角的方向键十字、右下角的 ABXY 菱形并列，是第三个自带说明的操作区。
-    void DrawStepTools(ScreenContext& ctx);
-    // 一组"减 · 加"按钮。中间那块读数由调用方自己画：
-    // 歌词偏移只有文字，音量还要带个喇叭图标，摆法不一样。
-    void DrawStepButtons(ScreenContext& ctx, const Rect& minus, const Rect& plus,
-                         HitButton minus_id, HitButton plus_id);
+    void DrawStickCross(ScreenContext& ctx);
     bool FaceButtonsVisible(ScreenContext& ctx) const;
     // 当前是否按双栏排版显示歌词（要同时满足：设置开了、显示译文、这首歌真的有译文）
     bool IsTwoColumnLyric(ScreenContext& ctx) const;
@@ -111,6 +111,11 @@ private:
     ViewMode m_view{ VIEW_LYRIC };
     SDL_Texture* m_cover{};
     std::string m_cover_source;             // 当前封面对应的音频文件，用来判断是否需要重载
+
+    // 歌词区背景。只有"自定义图片"这一档需要自己持有纹理；
+    // 用封面当背景时直接复用 m_cover，不重复占显存。
+    SDL_Texture* m_background{};
+    int m_background_mode{ -1 };            // 上次加载时的设置值，变了就重新加载
 
     double m_lyric_scroll{};                // 歌词滚动的当前偏移（像素），用于平滑过渡
     int m_last_lyric_index{ -1 };

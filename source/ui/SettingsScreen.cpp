@@ -1,6 +1,7 @@
 #include "SettingsScreen.h"
 #include "Renderer.h"
 #include "../Player.h"
+#include "../core/FileUtil.h"
 #include "../Version.h"
 #include "../input/InputMap.h"
 #include "../net/Updater.h"
@@ -61,6 +62,16 @@ namespace
         if (seconds % 60 == 0)
             return std::to_string(seconds / 60) + " 分钟";
         return std::to_string(seconds) + " 秒";
+    }
+
+    std::string BackgroundText(CConfig::LyricBackground mode)
+    {
+        switch (mode)
+        {
+        case CConfig::LB_COVER: return "当前曲目封面";
+        case CConfig::LB_FILE:  return "自定义图片";
+        default:                return "关闭";
+        }
     }
 
     std::string FormatBytes(uint64_t bytes)
@@ -124,6 +135,14 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_LYRIC_SYNC].label = "拖歌词跟随进度";
     m_rows[ITEM_LYRIC_SYNC].value = config.GetLyricSeekSync() ? "开启" : "关闭（仅翻看）";
     m_rows[ITEM_LYRIC_SYNC].actionable = true;
+
+    m_rows[ITEM_LYRIC_BACKGROUND].label = "歌词区背景";
+    m_rows[ITEM_LYRIC_BACKGROUND].value = BackgroundText(config.GetLyricBackground());
+    m_rows[ITEM_LYRIC_BACKGROUND].actionable = true;
+
+    m_rows[ITEM_IMMERSIVE].label = "沉浸模式";
+    m_rows[ITEM_IMMERSIVE].value = config.GetImmersive() ? "开启（收起屏上按钮）" : "关闭";
+    m_rows[ITEM_IMMERSIVE].actionable = true;
 
     m_rows[ITEM_EMBED].label = "下载后写入歌曲文件";
     m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? "开启" : "关闭（只存旁边）";
@@ -202,6 +221,35 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         config.SetLyricSeekSync(sync);
         ctx.ShowToast(sync ? "拖动歌词将同时改变播放进度"
                            : "拖动歌词只是翻看，松手后自动归位");
+        break;
+    }
+    case ITEM_LYRIC_BACKGROUND:
+    {
+        // 在几档之间循环
+        int next = (config.GetLyricBackground() + 1) % CConfig::LB_COUNT;
+        config.SetLyricBackground(static_cast<CConfig::LyricBackground>(next));
+        if (next == CConfig::LB_FILE)
+        {
+            // 这一档要用户自己放图，找不到就说清楚放哪儿
+            const std::string path = FileUtil::Combine(CPlayer::GetDataDir(), "background.jpg");
+            ctx.ShowToast(FileUtil::Exists(path) || FileUtil::Exists(
+                              FileUtil::Combine(CPlayer::GetDataDir(), "background.png"))
+                              ? "歌词区背景：自定义图片"
+                              : "把 background.jpg 放进 " + CPlayer::GetDataDir());
+        }
+        else
+        {
+            ctx.ShowToast("歌词区背景：" + BackgroundText(
+                              static_cast<CConfig::LyricBackground>(next)));
+        }
+        break;
+    }
+    case ITEM_IMMERSIVE:
+    {
+        const bool immersive = !config.GetImmersive();
+        config.SetImmersive(immersive);
+        ctx.ShowToast(immersive ? "沉浸模式：收起屏上按钮，只留封面和歌词"
+                                : "沉浸模式：关闭");
         break;
     }
     case ITEM_EMBED:
