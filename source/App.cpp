@@ -187,29 +187,52 @@ void CApp::SwitchScreen(ScreenId id)
     m_screens[m_current]->OnEnter(m_ctx);
 }
 
+namespace
+{
+    // 顶栏上一个小按钮：画出来并把矩形交回去，绘制和命中判定共用同一份坐标
+    Rect DrawChip(CRenderer& renderer, const std::string& text, int x, int y, Color background,
+                  Color foreground)
+    {
+        const int pad = 10;
+        int w = 0, h = 0;
+        renderer.MeasureText(text, CRenderer::FS_SMALL, w, h);
+        Rect rect{ x, y, w + pad * 2, h + 8 };
+        renderer.FillRoundRect(rect.x, rect.y, rect.w, rect.h, 6, background);
+        renderer.DrawText(text, rect.x + pad, rect.y + 4, CRenderer::FS_SMALL, foreground);
+        return rect;
+    }
+}
+
 void CApp::DrawHeader()
 {
     m_renderer.FillRect(0, 0, Theme::kScreenWidth, Theme::kHeaderHeight, Theme::kPanel);
     m_renderer.DrawLine(0, Theme::kHeaderHeight - 1, Theme::kScreenWidth, Theme::kHeaderHeight - 1,
                         Theme::kSeparator);
 
+    // 返回按钮。位置固定预留：不显示的时候也占着这块地方，
+    // 否则在有无返回的界面之间切换时标题会左右跳。
+    const int kBackWidth = 76;
+    m_back_button = Rect{};
+    if (m_screens[m_current]->CanGoBack())
+    {
+        m_back_button = DrawChip(m_renderer, "← 返回", Theme::kPadding, 22, Theme::kPanelAlt,
+                                 Theme::kText);
+    }
+
+    const int title_x = Theme::kPadding + kBackWidth + 12;
     int title_w = 0, title_h = 0;
     m_renderer.MeasureText("MusicPlayer2", CRenderer::FS_LARGE, title_w, title_h);
-    m_renderer.DrawText("MusicPlayer2", Theme::kPadding, 20, CRenderer::FS_LARGE, Theme::kAccent);
+    m_renderer.DrawText("MusicPlayer2", title_x, 20, CRenderer::FS_LARGE, Theme::kAccent);
 
-    // 设置入口做成常驻按钮，比藏在组合键里好找
-    {
-        int w = 0, h = 0;
-        m_renderer.MeasureText("设置", CRenderer::FS_SMALL, w, h);
-        m_settings_button.w = w + 20;
-        m_settings_button.h = h + 8;
-        m_settings_button.x = Theme::kPadding + title_w + 20;
-        m_settings_button.y = 26;
-        m_renderer.FillRoundRect(m_settings_button.x, m_settings_button.y, m_settings_button.w,
-                                 m_settings_button.h, 6, Theme::kPanelAlt);
-        m_renderer.DrawText("设置", m_settings_button.x + 10, m_settings_button.y + 4,
-                            CRenderer::FS_SMALL, Theme::kText);
-    }
+    // 设置和播放列表做成常驻按钮，比藏在 ＋ / − 键里好找，
+    // 也让纯触摸操作能进得去
+    int left_cursor = title_x + title_w + 16;
+    m_settings_button = DrawChip(m_renderer, "设置", left_cursor, 26, Theme::kPanelAlt,
+                                 Theme::kText);
+    left_cursor = m_settings_button.x + m_settings_button.w + 8;
+    m_playlist_button = DrawChip(m_renderer, "列表", left_cursor, 26, Theme::kPanelAlt,
+                                 Theme::kText);
+
     // 后台扫描时把状态顶到中间：否则用户会以为"打开就是空列表"
     CLibraryScanner::Progress scan = m_scanner.Poll();
     if (scan.running)
@@ -223,7 +246,7 @@ void CApp::DrawHeader()
                             CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
     }
 
-    // 右上角分两行：上面是日期时间，下面是播放模式和音量
+    // 右上角分两行：上面是日期时间，下面是音量、播放模式、触摸开关
     const int right_x = Theme::kScreenWidth - Theme::kPadding;
 
     SystemClock::DateTime now = SystemClock::Now();
@@ -231,46 +254,47 @@ void CApp::DrawHeader()
     m_renderer.DrawText(clock_text, right_x, 8, CRenderer::FS_SMALL,
                         now.valid ? Theme::kText : Theme::kTextDisabled, CRenderer::ALIGN_RIGHT);
 
-    // 第二行从右往左依次是：音量、播放模式按钮、触摸开关按钮
+    const int button_y = 34;
+
+    // 音量：数字两边各一个加减按钮。音量原本只能用左摇杆调，触摸够不着。
+    m_volume_up_button = Rect{ right_x - 34, button_y, 34, 28 };
+    m_renderer.FillRoundRect(m_volume_up_button.x, m_volume_up_button.y, m_volume_up_button.w,
+                             m_volume_up_button.h, 6, Theme::kPanelAlt);
+    m_renderer.DrawText("+", m_volume_up_button.x + m_volume_up_button.w / 2,
+                        m_volume_up_button.y + 2, CRenderer::FS_SMALL, Theme::kText,
+                        CRenderer::ALIGN_CENTER);
+
     char volume_text[32];
-    std::snprintf(volume_text, sizeof(volume_text), "音量 %d%%", m_player.GetVolume());
+    std::snprintf(volume_text, sizeof(volume_text), "%d%%", m_player.GetVolume());
     int volume_w = 0, volume_h = 0;
     m_renderer.MeasureText(volume_text, CRenderer::FS_SMALL, volume_w, volume_h);
-    m_renderer.DrawText(volume_text, right_x, 38, CRenderer::FS_SMALL, Theme::kTextDim,
+    const int volume_text_x = m_volume_up_button.x - 8;
+    m_renderer.DrawText(volume_text, volume_text_x, 38, CRenderer::FS_SMALL, Theme::kTextDim,
                         CRenderer::ALIGN_RIGHT);
 
-    const int button_pad = 10;
-    const int button_y = 34;
-    int cursor_x = right_x - volume_w - 16;         // 从右往左排布的游标
+    m_volume_down_button = Rect{ volume_text_x - volume_w - 8 - 34, button_y, 34, 28 };
+    m_renderer.FillRoundRect(m_volume_down_button.x, m_volume_down_button.y,
+                             m_volume_down_button.w, m_volume_down_button.h, 6, Theme::kPanelAlt);
+    m_renderer.DrawText("−", m_volume_down_button.x + m_volume_down_button.w / 2,
+                        m_volume_down_button.y + 2, CRenderer::FS_SMALL, Theme::kText,
+                        CRenderer::ALIGN_CENTER);
 
-    // 播放模式按钮
+    int cursor_x = m_volume_down_button.x - 8;      // 从右往左排布的游标
+
     const char* mode_text = CPlayer::GetRepeatModeName(m_player.GetRepeatMode());
     int mode_w = 0, mode_h = 0;
     m_renderer.MeasureText(mode_text, CRenderer::FS_SMALL, mode_w, mode_h);
-    m_repeat_button.w = mode_w + button_pad * 2;
-    m_repeat_button.h = mode_h + 8;
-    m_repeat_button.x = cursor_x - m_repeat_button.w;
-    m_repeat_button.y = button_y;
-    m_renderer.FillRoundRect(m_repeat_button.x, m_repeat_button.y, m_repeat_button.w,
-                             m_repeat_button.h, 6, Theme::kPanelAlt);
-    m_renderer.DrawText(mode_text, m_repeat_button.x + button_pad, m_repeat_button.y + 4,
-                        CRenderer::FS_SMALL, Theme::kText);
+    m_repeat_button = DrawChip(m_renderer, mode_text, cursor_x - (mode_w + 20), button_y,
+                               Theme::kPanelAlt, Theme::kText);
     cursor_x = m_repeat_button.x - 8;
 
-    // 触摸开关按钮
     const bool touch_on = m_input.IsTouchEnabled();
-    const char* touch_text = touch_on ? "触摸 开" : "触摸 关";
+    const std::string touch_text = touch_on ? "触摸 开" : "触摸 关";
     int touch_w = 0, touch_h = 0;
     m_renderer.MeasureText(touch_text, CRenderer::FS_SMALL, touch_w, touch_h);
-    m_touch_button.w = touch_w + button_pad * 2;
-    m_touch_button.h = touch_h + 8;
-    m_touch_button.x = cursor_x - m_touch_button.w;
-    m_touch_button.y = button_y;
-    m_renderer.FillRoundRect(m_touch_button.x, m_touch_button.y, m_touch_button.w,
-                             m_touch_button.h, 6,
-                             touch_on ? Theme::kPanelAlt : Theme::kAccentDim);
-    m_renderer.DrawText(touch_text, m_touch_button.x + button_pad, m_touch_button.y + 4,
-                        CRenderer::FS_SMALL, touch_on ? Theme::kText : Theme::kTextDim);
+    m_touch_button = DrawChip(m_renderer, touch_text, cursor_x - (touch_w + 20), button_y,
+                              touch_on ? Theme::kPanelAlt : Theme::kAccentDim,
+                              touch_on ? Theme::kText : Theme::kTextDim);
 }
 
 void CApp::ToggleTouchEnabled()
@@ -308,6 +332,23 @@ void CApp::HandleHeaderTouch()
     else if (m_settings_button.Contains(raw.x, raw.y))
     {
         m_ctx.next_screen = SCREEN_SETTINGS;
+    }
+    else if (m_playlist_button.Contains(raw.x, raw.y))
+    {
+        m_ctx.next_screen = SCREEN_PLAYLIST;
+    }
+    else if (m_back_button.Contains(raw.x, raw.y))
+    {
+        // 走界面自己的 GoBack，和按 B 是同一条路径，两者不会走偏
+        m_screens[m_current]->GoBack(m_ctx);
+    }
+    else if (m_volume_up_button.Contains(raw.x, raw.y))
+    {
+        m_player.AdjustVolume(5);
+    }
+    else if (m_volume_down_button.Contains(raw.x, raw.y))
+    {
+        m_player.AdjustVolume(-5);
     }
 }
 

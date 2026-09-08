@@ -54,6 +54,12 @@ public:
     virtual void Update(ScreenContext& ctx, double delta_seconds) = 0;
     virtual void Draw(ScreenContext& ctx) = 0;
 
+    // 返回上一层。B 键和顶栏的返回按钮都走这里——
+    // "B 键做什么"只写一次，两条路径就不会走偏。
+    virtual void GoBack(ScreenContext& ctx) { ctx.next_screen = SCREEN_PLAYER; }
+    // 顶栏要不要画返回按钮。播放界面是根，没有上一层。
+    virtual bool CanGoBack() const { return true; }
+
     // 该界面在顶栏显示的名字
     virtual const char* GetTitle() const = 0;
     // 底栏的按键提示

@@ -1,5 +1,6 @@
 #pragma once
 #include "Screen.h"
+#include "Theme.h"
 #include "../core/FileUtil.h"
 
 #include <string>
@@ -15,6 +16,7 @@ public:
 
     const char* GetTitle() const override { return "浏览 SD 卡"; }
     const char* GetButtonHints() const override;
+    void GoBack(ScreenContext& ctx) override;
 
 private:
     struct Item
@@ -42,4 +44,9 @@ private:
     bool m_dragging{};              // 手指正按在列表上拖动
     double m_fling{};               // 松手后的惯性速度（行/秒）
     std::string m_error;
+
+    // 路径行右侧的两个动作按钮。这两个功能原本只有 X / Y 键能触发，
+    // 纯触摸操作就用不了。矩形在 Draw 里算出，供下一帧命中判定。
+    Rect m_play_dir_button;
+    Rect m_set_dir_button;
 };

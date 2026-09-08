@@ -16,6 +16,7 @@ public:
     {
         VIEW_LYRIC = 0,     // 歌词滚动（有歌词时的默认视图）
         VIEW_SPECTRUM,      // 频谱
+        VIEW_COVER,         // 大封面
         VIEW_COUNT
     };
 
@@ -29,6 +30,10 @@ public:
 
     const char* GetTitle() const override { return "正在播放"; }
     const char* GetButtonHints() const override;
+
+    // 播放界面是根，平时没有上一层；只有封面全屏时"返回"才有意义
+    bool CanGoBack() const override { return m_cover_fullscreen; }
+    void GoBack(ScreenContext& ctx) override;
 
 private:
     // 触摸能按到的按钮。
@@ -48,7 +53,9 @@ private:
         HIT_FACE_X,
         HIT_FACE_Y,
         HIT_TOOL_DOWNLOAD,      // 歌词区右上角：下载歌词/封面
-        HIT_TOOL_SYNC           // 歌词区右上角：拖歌词是否带着进度走
+        HIT_TOOL_SYNC,          // 歌词区右上角：拖歌词是否带着进度走
+        HIT_OFFSET_MINUS,       // 歌词区左上角：歌词提前
+        HIT_OFFSET_PLUS         // 歌词区左上角：歌词延后
     };
 
     void DrawCover(ScreenContext& ctx);
@@ -59,6 +66,8 @@ private:
     void DrawFaceButtons(ScreenContext& ctx);
     // 歌词区右上角的两个小按钮
     void DrawLyricTools(ScreenContext& ctx);
+    // 歌词区左上角的偏移调整。原本只有"按住 B + 方向键"能调，触摸够不着。
+    void DrawLyricOffsetTools(ScreenContext& ctx);
     bool FaceButtonsVisible(ScreenContext& ctx) const;
     // 当前是否按双栏排版显示歌词（要同时满足：设置开了、显示译文、这首歌真的有译文）
     bool IsTwoColumnLyric(ScreenContext& ctx) const;
@@ -68,6 +77,9 @@ private:
     void DrawLyricText(ScreenContext& ctx, const CLrcParser::Lyric& line, int center_x, int y,
                        int max_width, bool is_current, int position);
     void DrawSpectrumView(ScreenContext& ctx, int x, int y, int width, int height);
+    // 右栏铺满的大封面。存在的意义是让"看大图"这件事不只有触摸能做到：
+    // X 键循环视图就能切到它，再点一下（或按 A）进全屏。
+    void DrawCoverView(ScreenContext& ctx, int x, int y, int width, int height);
     void DrawVolumeOverlay(ScreenContext& ctx);
     // 封面全屏查看：点封面进入，再点一下或按 B 退出
     void DrawCoverFullscreen(ScreenContext& ctx);
@@ -75,6 +87,8 @@ private:
     void HandleTouch(ScreenContext& ctx);
     // 手指在歌词区上下拖动：翻看歌词。返回 true 表示这一帧的触摸已被歌词区吃掉。
     bool HandleLyricDrag(ScreenContext& ctx, double delta_seconds);
+    // 翻看结束（松手，或右摇杆回中）。开了同步就跳到停留的那一句。
+    void FinishLyricBrowse(ScreenContext& ctx, bool moved);
     // 按下某个 ABXY 触摸键等价于按下对应的手柄键
     void ActivateFaceButton(ScreenContext& ctx, HitButton button);
     // 进度条上要显示的位置：正常是播放位置，拖动时是拖到的位置
@@ -103,6 +117,7 @@ private:
     // 默认只是翻看：松手几秒后自己滑回当前播放的那句。
     // 打开"同步"后改成松手即定位，把歌曲进度也带过去。
     bool   m_lyric_dragging{};
+    bool   m_lyric_stick_browsing{};        // 正在用右摇杆翻看
     double m_lyric_browse_offset{};         // 相对跟随位置的像素偏移，向下拖为正
     double m_lyric_browse_hold{};           // 松手后还要保持多久才滑回去（秒）
     int    m_lyric_browse_index{ -1 };      // 上一帧算出的、落在视图中心的那句

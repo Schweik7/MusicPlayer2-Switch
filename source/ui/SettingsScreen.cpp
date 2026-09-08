@@ -88,6 +88,15 @@ const char* CSettingsScreen::GetButtonHints() const
     return "A 修改/执行|B 返回|方向键 移动|左右 切换栏";
 }
 
+void CSettingsScreen::GoBack(ScreenContext& ctx)
+{
+    // 关于页是设置的子页，先退回列表
+    if (m_show_about)
+        m_show_about = false;
+    else
+        ctx.next_screen = SCREEN_PLAYER;
+}
+
 void CSettingsScreen::BuildRows(ScreenContext& ctx)
 {
     CPlayer& player = *ctx.player;
@@ -245,10 +254,7 @@ void CSettingsScreen::Update(ScreenContext& ctx, double delta_seconds)
 
     if (input.IsDown(CInputMap::BTN_B))
     {
-        if (m_show_about)
-            m_show_about = false;
-        else
-            ctx.next_screen = SCREEN_PLAYER;
+        GoBack(ctx);
         return;
     }
     if (m_show_about)

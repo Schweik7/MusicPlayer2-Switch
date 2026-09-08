@@ -43,7 +43,8 @@ void CDownloadScreen::OnLeave(ScreenContext& ctx)
 
 const char* CDownloadScreen::GetButtonHints() const
 {
-    return "A 下载选中项|X 搜索|Y 切换音乐源|ZL/ZR 歌词/封面开关|＋ 写入文件开关|B 返回";
+    // 顶部那一行的每个格子都能点，这里只写手柄键
+    return "A 下载|X 搜索|Y 音乐源|ZL/ZR 歌词/封面|＋ 写入文件|B 返回";
 }
 
 void CDownloadScreen::ResetKeywordFromCurrentSong(ScreenContext& ctx)
@@ -69,6 +70,77 @@ CDownloadManager::AutoRequest CDownloadScreen::MakeRequest(ScreenContext& ctx) c
     request.with_translation = ctx.player->GetConfig().GetShowTranslation();
     request.embed_into_file = ctx.player->GetConfig().GetEmbedDownloads();
     return request;
+}
+
+void CDownloadScreen::ToggleProvider(ScreenContext& ctx)
+{
+    CDownloadManager& downloader = ctx.player->GetDownloader();
+    CDownloadManager::ProviderId next =
+        downloader.GetProvider() == CDownloadManager::PROVIDER_NETEASE
+            ? CDownloadManager::PROVIDER_QQ
+            : CDownloadManager::PROVIDER_NETEASE;
+    downloader.SetProvider(next);
+    downloader.Reset();
+    ctx.ShowToast(std::string("已切换到 ") + CDownloadManager::GetProviderName(next));
+    m_selected = 0;
+    m_scroll = 0;
+    m_scroll_smooth = 0.0;
+}
+
+void CDownloadScreen::ToggleLyric(ScreenContext& ctx)
+{
+    m_download_lyric = !m_download_lyric;
+    ctx.ShowToast(m_download_lyric ? "下载歌词：开" : "下载歌词：关");
+}
+
+void CDownloadScreen::ToggleCover(ScreenContext& ctx)
+{
+    m_download_cover = !m_download_cover;
+    ctx.ShowToast(m_download_cover ? "下载封面：开" : "下载封面：关");
+}
+
+void CDownloadScreen::ToggleEmbed(ScreenContext& ctx)
+{
+    CConfig& config = ctx.player->GetConfig();
+    const bool embed = !config.GetEmbedDownloads();
+    config.SetEmbedDownloads(embed);
+    ctx.ShowToast(embed ? "写入歌曲文件：开（仅 MP3 / FLAC）"
+                        : "写入歌曲文件：关，只存在歌曲旁边");
+}
+
+bool CDownloadScreen::HandleTopBarTouch(ScreenContext& ctx)
+{
+    const CInputMap::TouchState& touch = ctx.input->GetTouch();
+    if (!touch.released || touch.IsDrag())
+        return false;
+
+    // 矩形来自上一帧的 Draw，首帧全是空矩形，不会误命中
+    if (m_provider_rect.Contains(touch.x, touch.y))
+    {
+        ToggleProvider(ctx);
+        return true;
+    }
+    if (m_lyric_rect.Contains(touch.x, touch.y))
+    {
+        ToggleLyric(ctx);
+        return true;
+    }
+    if (m_cover_rect.Contains(touch.x, touch.y))
+    {
+        ToggleCover(ctx);
+        return true;
+    }
+    if (m_embed_rect.Contains(touch.x, touch.y))
+    {
+        ToggleEmbed(ctx);
+        return true;
+    }
+    if (m_keyword_rect.Contains(touch.x, touch.y))
+    {
+        EditKeyword(ctx);
+        return true;
+    }
+    return false;
 }
 
 void CDownloadScreen::StartSearch(ScreenContext& ctx)
@@ -142,14 +214,17 @@ void CDownloadScreen::Update(ScreenContext& ctx, double delta_seconds)
 
     if (input.IsDown(CInputMap::BTN_B))
     {
-        ctx.next_screen = SCREEN_PLAYER;
+        GoBack(ctx);
         return;
     }
 
     // 下载/搜索进行中时只允许取消，避免并发发起第二个任务
     if (downloader.IsBusy())
     {
-        if (input.IsDown(CInputMap::BTN_MINUS))
+        const CInputMap::TouchState& touch = input.GetTouch();
+        const bool tapped_cancel = touch.released && !touch.IsDrag()
+                                   && m_cancel_rect.Contains(touch.x, touch.y);
+        if (input.IsDown(CInputMap::BTN_MINUS) || tapped_cancel)
         {
             downloader.Cancel();
             ctx.ShowToast("已请求取消");
@@ -162,46 +237,33 @@ void CDownloadScreen::Update(ScreenContext& ctx, double delta_seconds)
 
     if (input.IsDown(CInputMap::BTN_Y))
     {
-        CDownloadManager::ProviderId next = downloader.GetProvider() == CDownloadManager::PROVIDER_NETEASE
-                                                ? CDownloadManager::PROVIDER_QQ
-                                                : CDownloadManager::PROVIDER_NETEASE;
-        downloader.SetProvider(next);
-        downloader.Reset();
-        ctx.ShowToast(std::string("已切换到 ") + CDownloadManager::GetProviderName(next));
-        m_selected = 0;
-        m_scroll = 0;
-        m_scroll_smooth = 0.0;
+        ToggleProvider(ctx);
         return;
     }
 
     if (input.IsDown(CInputMap::BTN_ZL))
-    {
-        m_download_lyric = !m_download_lyric;
-        ctx.ShowToast(m_download_lyric ? "下载歌词：开" : "下载歌词：关");
-    }
+        ToggleLyric(ctx);
     if (input.IsDown(CInputMap::BTN_ZR))
-    {
-        m_download_cover = !m_download_cover;
-        ctx.ShowToast(m_download_cover ? "下载封面：开" : "下载封面：关");
-    }
+        ToggleCover(ctx);
     // 是否把下载到的东西写进歌曲文件本身。放在这里而不是只留在设置里，
     // 是因为决定"这一首要不要嵌"的时机就在按下载之前。
     if (input.IsDown(CInputMap::BTN_PLUS))
-    {
-        CConfig& config = ctx.player->GetConfig();
-        const bool embed = !config.GetEmbedDownloads();
-        config.SetEmbedDownloads(embed);
-        ctx.ShowToast(embed ? "写入歌曲文件：开（仅 MP3 / FLAC）"
-                            : "写入歌曲文件：关，只存在歌曲旁边");
-    }
+        ToggleEmbed(ctx);
+
+    // 顶部那一行的点击。放在列表之前处理：命中了就不该再落到列表上。
+    if (HandleTopBarTouch(ctx))
+        return;
 
     const int count = static_cast<int>(status.results.size());
     const int visible = VisibleCount();
 
     if (count == 0)
     {
-        // 还没搜过：A 直接触发一次搜索
-        if (input.IsDown(CInputMap::BTN_A))
+        // 还没搜过：A 或者点一下空列表区都能触发搜索
+        const CInputMap::TouchState& touch = input.GetTouch();
+        const bool tapped_list = touch.released && !touch.IsDrag()
+                                 && touch.y >= Theme::kHeaderHeight + Theme::kPadding + 96;
+        if (input.IsDown(CInputMap::BTN_A) || tapped_list)
             StartSearch(ctx);
         return;
     }
@@ -257,21 +319,49 @@ void CDownloadScreen::Draw(ScreenContext& ctx)
     const int list_y = keyword_y + 96;
     const int visible = VisibleCount();
 
-    // ---- 搜索关键词 ----
+    // ---- 搜索关键词与开关 ----
+    // 这一整行都是可点的：搜索框点开键盘，右边四个是开关。
     r.FillRoundRect(x, keyword_y - 6, width, 40, 6, Theme::kPanel);
-    r.DrawText("搜索：", x + 12, keyword_y + 2, CRenderer::FS_SMALL, Theme::kTextDim);
-    r.DrawTextEllipsis(m_keyword.empty() ? std::string("（按 X 输入）") : m_keyword,
-                       x + 78, keyword_y, width - 90 - 200, CRenderer::FS_NORMAL, Theme::kText);
 
-    // 右侧：音乐源 + 下载项开关
-    char toggles[160];
-    std::snprintf(toggles, sizeof(toggles), "%s   歌词 %s   封面 %s   写入文件 %s",
-                  downloader.GetProviderName(),
-                  m_download_lyric ? "√" : "×",
-                  m_download_cover ? "√" : "×",
-                  ctx.player->GetConfig().GetEmbedDownloads() ? "√" : "×");
-    r.DrawText(toggles, x + width - 12, keyword_y + 2, CRenderer::FS_SMALL,
-               Theme::kAccent, CRenderer::ALIGN_RIGHT);
+    // 右边的开关从右往左排，先排完才知道搜索框剩多宽
+    auto draw_toggle = [&](const std::string& label, bool on, int right) {
+        const int pad = 8;
+        int w = 0, h = 0;
+        const std::string text = label + (on ? " √" : " ×");
+        r.MeasureText(text, CRenderer::FS_SMALL, w, h);
+        Rect rect{ right - w - pad * 2, keyword_y - 2, w + pad * 2, 32 };
+        r.FillRoundRect(rect.x, rect.y, rect.w, rect.h, 6,
+                        on ? Theme::kAccentDim : Theme::kPanelAlt);
+        r.DrawText(text, rect.x + pad, rect.y + 4, CRenderer::FS_SMALL,
+                   on ? Theme::kText : Theme::kTextDim);
+        return rect;
+    };
+
+    int right = x + width - 8;
+    m_embed_rect = draw_toggle("写入文件", ctx.player->GetConfig().GetEmbedDownloads(), right);
+    right = m_embed_rect.x - 8;
+    m_cover_rect = draw_toggle("封面", m_download_cover, right);
+    right = m_cover_rect.x - 8;
+    m_lyric_rect = draw_toggle("歌词", m_download_lyric, right);
+    right = m_lyric_rect.x - 8;
+
+    {
+        const int pad = 8;
+        int w = 0, h = 0;
+        r.MeasureText(downloader.GetProviderName(), CRenderer::FS_SMALL, w, h);
+        m_provider_rect = Rect{ right - w - pad * 2, keyword_y - 2, w + pad * 2, 32 };
+        r.FillRoundRect(m_provider_rect.x, m_provider_rect.y, m_provider_rect.w,
+                        m_provider_rect.h, 6, Theme::kPanelAlt);
+        r.DrawText(downloader.GetProviderName(), m_provider_rect.x + pad,
+                   m_provider_rect.y + 4, CRenderer::FS_SMALL, Theme::kAccent);
+        right = m_provider_rect.x - 12;
+    }
+
+    m_keyword_rect = Rect{ x, keyword_y - 6, right - x, 40 };
+    r.DrawText("搜索：", x + 12, keyword_y + 2, CRenderer::FS_SMALL, Theme::kTextDim);
+    r.DrawTextEllipsis(m_keyword.empty() ? std::string("（点这里或按 X 输入）") : m_keyword,
+                       x + 78, keyword_y, m_keyword_rect.w - 90, CRenderer::FS_NORMAL,
+                       Theme::kText);
 
     // ---- 状态行 ----
     Color status_color = Theme::kTextDim;
@@ -289,7 +379,22 @@ void CDownloadScreen::Draw(ScreenContext& ctx)
         message += "  ";
         message += kSpinner[phase];
     }
-    r.DrawTextEllipsis(message, x, status_y, width, CRenderer::FS_SMALL, status_color);
+    // 忙碌时右侧给一个取消按钮：不给的话纯触摸操作只能干等
+    m_cancel_rect = Rect{};
+    int status_width = width;
+    if (downloader.IsBusy())
+    {
+        const int pad = 10;
+        int w = 0, h = 0;
+        r.MeasureText("取消", CRenderer::FS_SMALL, w, h);
+        m_cancel_rect = Rect{ x + width - w - pad * 2, status_y - 4, w + pad * 2, h + 8 };
+        r.FillRoundRect(m_cancel_rect.x, m_cancel_rect.y, m_cancel_rect.w, m_cancel_rect.h, 6,
+                        Theme::kPanelAlt);
+        r.DrawText("取消", m_cancel_rect.x + pad, m_cancel_rect.y + 4, CRenderer::FS_SMALL,
+                   Theme::kHighlight);
+        status_width = m_cancel_rect.x - x - 12;
+    }
+    r.DrawTextEllipsis(message, x, status_y, status_width, CRenderer::FS_SMALL, status_color);
 
     if (!ctx.player->IsNetworkReady())
     {

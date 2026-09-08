@@ -38,6 +38,15 @@ void CBrowserScreen::OnEnter(ScreenContext& ctx)
     }
 }
 
+void CBrowserScreen::GoBack(ScreenContext& ctx)
+{
+    // 在根目录再返回一次就回播放界面
+    if (FileUtil::NormalizeSeparators(m_dir).size() <= 6)
+        ctx.next_screen = SCREEN_PLAYER;
+    else
+        GoUp(ctx);
+}
+
 const char* CBrowserScreen::GetButtonHints() const
 {
     return "A 打开/播放|B 上级目录|X 播放整个目录|Y 设为音乐目录|− 播放列表|＋ 设置";
@@ -219,11 +228,7 @@ void CBrowserScreen::Update(ScreenContext& ctx, double delta_seconds)
     }
     if (input.IsDown(CInputMap::BTN_B))
     {
-        // 在根目录按 B 直接回播放界面
-        if (FileUtil::NormalizeSeparators(m_dir).size() <= 6)
-            ctx.next_screen = SCREEN_PLAYER;
-        else
-            GoUp(ctx);
+        GoBack(ctx);
         return;
     }
 
@@ -274,6 +279,25 @@ void CBrowserScreen::Update(ScreenContext& ctx, double delta_seconds)
     if (input.IsDown(CInputMap::BTN_Y))
         SetAsMusicDir(ctx);
 
+    // 路径行上那两个按钮的点击。要放在列表处理之后：
+    // 它们在列表上方，不会和列表命中冲突。
+    {
+        const CInputMap::TouchState& touch = input.GetTouch();
+        if (touch.released && !touch.IsDrag())
+        {
+            if (m_play_dir_button.Contains(touch.x, touch.y))
+            {
+                PlayCurrentDirectory(ctx, false);
+                return;
+            }
+            if (m_set_dir_button.Contains(touch.x, touch.y))
+            {
+                SetAsMusicDir(ctx);
+                return;
+            }
+        }
+    }
+
     if (touch_scrolled)
     {
         // 触摸在主导滚动：把光标拉进可见范围，而不是反过来把列表拽回光标处
@@ -301,8 +325,22 @@ void CBrowserScreen::Draw(ScreenContext& ctx)
     const int list_w = Theme::kScreenWidth - list_x * 2 - 12;
     const int visible = VisibleCount();
 
+    // 路径行右侧的两个动作按钮，和 X / Y 键等价
+    auto draw_action = [&](const std::string& text, int right) {
+        const int pad = 10;
+        int w = 0, h = 0;
+        r.MeasureText(text, CRenderer::FS_SMALL, w, h);
+        Rect rect{ right - w - pad * 2, path_y - 6, w + pad * 2, h + 10 };
+        r.FillRoundRect(rect.x, rect.y, rect.w, rect.h, 6, Theme::kPanelAlt);
+        r.DrawText(text, rect.x + pad, rect.y + 5, CRenderer::FS_SMALL, Theme::kText);
+        return rect;
+    };
+    m_set_dir_button = draw_action("Y 设为音乐目录", list_x + list_w);
+    m_play_dir_button = draw_action("X 播放整个目录", m_set_dir_button.x - 8);
+
     // 当前路径
-    r.DrawTextEllipsis(m_dir, list_x, path_y, list_w, CRenderer::FS_SMALL, Theme::kAccent);
+    r.DrawTextEllipsis(m_dir, list_x, path_y, m_play_dir_button.x - list_x - 12,
+                       CRenderer::FS_SMALL, Theme::kAccent);
 
     if (!m_error.empty())
     {

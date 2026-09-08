@@ -64,7 +64,7 @@ void CPlaylistScreen::Update(ScreenContext& ctx, double delta_seconds)
 
     if (input.IsDown(CInputMap::BTN_B) || input.IsDown(CInputMap::BTN_MINUS))
     {
-        ctx.next_screen = SCREEN_PLAYER;
+        GoBack(ctx);
         return;
     }
     if (input.IsDown(CInputMap::BTN_PLUS))

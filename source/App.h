@@ -68,11 +68,18 @@ private:
     std::string m_last_error;
     bool m_running{};
 
-    // 顶栏的两个触摸按钮。矩形在 DrawHeader 里按文字宽度算出，
+    // 顶栏的触摸按钮。矩形在 DrawHeader 里按文字宽度算出，
     // 供下一帧的触摸判定使用——首帧是空矩形，不会误命中。
+    //
+    // 顶栏放这些按钮的原则：凡是只能靠某个手柄键触发的功能，都要在这里有个入口，
+    // 否则纯触摸操作的用户会被卡住（返回就是这么漏掉的）。
+    Rect m_back_button;
     Rect m_repeat_button;
     Rect m_touch_button;
     Rect m_settings_button;
+    Rect m_playlist_button;
+    Rect m_volume_down_button;
+    Rect m_volume_up_button;
 
     std::string m_self_path;
     // 上一帧观察到的下载状态，用于识别"刚刚完成"这个瞬间

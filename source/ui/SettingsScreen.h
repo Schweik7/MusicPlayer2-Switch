@@ -22,6 +22,7 @@ public:
 
     const char* GetTitle() const override { return m_show_about ? "关于" : "设置"; }
     const char* GetButtonHints() const override;
+    void GoBack(ScreenContext& ctx) override;
 
 private:
     enum ItemId

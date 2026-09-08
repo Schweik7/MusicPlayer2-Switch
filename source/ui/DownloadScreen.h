@@ -1,5 +1,6 @@
 #pragma once
 #include "Screen.h"
+#include "Theme.h"
 #include "../net/DownloadManager.h"
 
 #include <string>
@@ -23,6 +24,14 @@ private:
     void StartSearch(ScreenContext& ctx);
     void StartDownload(ScreenContext& ctx, int index);
     void EditKeyword(ScreenContext& ctx);
+    // 顶部那几个开关。抽成方法是为了让手柄键和触摸走同一段代码，
+    // 不至于改了一边忘了另一边。
+    void ToggleProvider(ScreenContext& ctx);
+    void ToggleLyric(ScreenContext& ctx);
+    void ToggleCover(ScreenContext& ctx);
+    void ToggleEmbed(ScreenContext& ctx);
+    // 处理顶部那一行的点击。命中了返回 true。
+    bool HandleTopBarTouch(ScreenContext& ctx);
     // 用当前曲目的标签生成默认关键词
     void ResetKeywordFromCurrentSong(ScreenContext& ctx);
     CDownloadManager::AutoRequest MakeRequest(ScreenContext& ctx) const;
@@ -38,4 +47,15 @@ private:
     bool m_download_lyric{ true };
     bool m_download_cover{ true };
     double m_spinner_phase{};           // 忙碌指示器的动画相位
+
+    // 顶部那一行的可点区域。全都是原本只有手柄键能触发的功能，
+    // 不给触摸入口的话纯触摸操作就搜不了、也换不了音乐源。
+    // 矩形在 Draw 里按文字宽度算出，供下一帧的命中判定用。
+    Rect m_keyword_rect;
+    Rect m_provider_rect;
+    Rect m_lyric_rect;
+    Rect m_cover_rect;
+    Rect m_embed_rect;
+    // 忙碌时状态行右侧的取消按钮。取消原本只有 − 键能按。
+    Rect m_cancel_rect;
 };
