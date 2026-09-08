@@ -82,10 +82,9 @@ public:
     }
     void SetLyricBackground(LyricBackground value) { SetInt("lyric_background", value); }
 
-    // 沉浸模式：把屏幕上的触摸操作区和底栏提示都收起来，只留封面、曲目信息和歌词。
-    // 触摸仍然可用（进度条、拖歌词、点封面），只是不再画那些按钮。
-    bool GetImmersive() const { return GetBool("immersive", false); }
-    void SetImmersive(bool b) { SetBool("immersive", b); }
+    // 底栏的键位提示条是否隐藏。收起来之后歌词区能多用 64 像素。
+    bool GetHideHints() const { return GetBool("hide_hints", false); }
+    void SetHideHints(bool b) { SetBool("hide_hints", b); }
 
     bool GetShowSpectrum() const { return GetBool("show_spectrum", true); }
     void SetShowSpectrum(bool b) { SetBool("show_spectrum", b); }

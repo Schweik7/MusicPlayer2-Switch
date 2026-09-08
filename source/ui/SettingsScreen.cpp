@@ -115,8 +115,9 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
 
     m_rows.assign(ITEM_COUNT, Row());
 
+    // 关掉触摸就是沉浸模式：屏上的按钮全收起来，封面放大。这两件事没必要拆成两个开关。
     m_rows[ITEM_TOUCH].label = "触摸操作";
-    m_rows[ITEM_TOUCH].value = ctx.input->IsTouchEnabled() ? "开启" : "关闭";
+    m_rows[ITEM_TOUCH].value = ctx.input->IsTouchEnabled() ? "开启" : "关闭（沉浸模式）";
     m_rows[ITEM_TOUCH].actionable = true;
 
     m_rows[ITEM_DIM].label = "空闲自动变暗";
@@ -140,9 +141,9 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_LYRIC_BACKGROUND].value = BackgroundText(config.GetLyricBackground());
     m_rows[ITEM_LYRIC_BACKGROUND].actionable = true;
 
-    m_rows[ITEM_IMMERSIVE].label = "沉浸模式";
-    m_rows[ITEM_IMMERSIVE].value = config.GetImmersive() ? "开启（收起屏上按钮）" : "关闭";
-    m_rows[ITEM_IMMERSIVE].actionable = true;
+    m_rows[ITEM_HIDE_HINTS].label = "隐藏底部键位提示";
+    m_rows[ITEM_HIDE_HINTS].value = config.GetHideHints() ? "隐藏" : "显示";
+    m_rows[ITEM_HIDE_HINTS].actionable = true;
 
     m_rows[ITEM_EMBED].label = "下载后写入歌曲文件";
     m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? "开启" : "关闭（只存旁边）";
@@ -184,7 +185,8 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         bool enabled = !ctx.input->IsTouchEnabled();
         ctx.input->SetTouchEnabled(enabled);
         config.SetTouchEnabled(enabled);
-        ctx.ShowToast(enabled ? "已启用触摸操作" : "已禁用触摸操作");
+        ctx.ShowToast(enabled ? "已启用触摸操作"
+                              : "沉浸模式：触摸已关闭，按下左摇杆（LS）恢复");
         break;
     }
     case ITEM_DIM:
@@ -244,12 +246,11 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         }
         break;
     }
-    case ITEM_IMMERSIVE:
+    case ITEM_HIDE_HINTS:
     {
-        const bool immersive = !config.GetImmersive();
-        config.SetImmersive(immersive);
-        ctx.ShowToast(immersive ? "沉浸模式：收起屏上按钮，只留封面和歌词"
-                                : "沉浸模式：关闭");
+        const bool hide = !config.GetHideHints();
+        config.SetHideHints(hide);
+        ctx.ShowToast(hide ? "底部键位提示已隐藏，歌词区随之变高" : "底部键位提示已显示");
         break;
     }
     case ITEM_EMBED:

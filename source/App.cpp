@@ -245,6 +245,18 @@ void CApp::DrawHeader()
     m_playlist_button = DrawChip(m_renderer, "列表", left_cursor, 26, Theme::kPanelAlt,
                                  Theme::kText);
 
+    // 第几首 / 共几首。放顶栏而不是播放界面里：它在哪个界面都有意义，
+    // 而且沉浸模式下播放界面上的东西是要收起来的。
+    const int total = m_player.GetPlaylistSize();
+    if (total > 0)
+    {
+        char fraction[32];
+        std::snprintf(fraction, sizeof(fraction), "%d / %d",
+                      m_player.GetCurrentIndex() + 1, total);
+        m_renderer.DrawText(fraction, m_playlist_button.x + m_playlist_button.w + 14, 30,
+                            CRenderer::FS_SMALL, Theme::kAccent);
+    }
+
     // 后台扫描时把状态顶到中间：否则用户会以为"打开就是空列表"
     CLibraryScanner::Progress scan = m_scanner.Poll();
     if (scan.running)
@@ -292,7 +304,10 @@ void CApp::ToggleTouchEnabled()
     bool enabled = !m_input.IsTouchEnabled();
     m_input.SetTouchEnabled(enabled);
     m_player.GetConfig().SetTouchEnabled(enabled);
-    m_ctx.ShowToast(enabled ? "已启用触摸操作" : "已禁用触摸操作");
+    // 关掉触摸就是沉浸模式：屏上的按钮全收起来，封面和歌词占满。
+    // 必须把"怎么退出"说清楚——收起来之后连那个开关本身都不在屏幕上了。
+    m_ctx.ShowToast(enabled ? "已启用触摸操作"
+                            : "沉浸模式：触摸已关闭，按下左摇杆（LS）恢复");
 }
 
 void CApp::HandleHeaderTouch()
@@ -347,6 +362,9 @@ void CApp::DrawDimOverlay()
 
 void CApp::DrawFooter()
 {
+    if (m_player.GetConfig().GetHideHints())
+        return;
+
     const int y = Theme::kScreenHeight - Theme::kFooterHeight;
     m_renderer.FillRect(0, y, Theme::kScreenWidth, Theme::kFooterHeight, Theme::kPanel);
     m_renderer.DrawLine(0, y, Theme::kScreenWidth, y, Theme::kSeparator);

@@ -33,7 +33,7 @@ private:
         ITEM_LYRIC_LAYOUT,
         ITEM_LYRIC_SYNC,
         ITEM_LYRIC_BACKGROUND,
-        ITEM_IMMERSIVE,
+        ITEM_HIDE_HINTS,
         ITEM_EMBED,
         ITEM_BROWSE,
         ITEM_MUSIC_DIR,

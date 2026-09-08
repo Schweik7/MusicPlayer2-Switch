@@ -37,6 +37,21 @@ public:
     void GoBack(ScreenContext& ctx) override;
 
 private:
+    // 内容区的尺寸。按钮簇的坐标是编译期常量（绘制与命中共用同一份），
+    // 但封面、曲目信息、进度条、歌词区要随模式变，所以每帧算一次。
+    struct Layout
+    {
+        int left_width{};
+        Rect cover{};
+        int info_y{};                       // 标题基线
+        int progress_y{};
+        Rect progress_hit{};                // 比可视进度条大得多，手指点不了那么准
+        Rect right{};                       // 歌词 / 频谱 / 大封面
+    };
+    // immersive 时没有触摸按钮，左栏可以让封面占得更大；
+    // hide_hints 时底栏不画，内容区跟着往下长。
+    static Layout ComputeLayout(bool immersive, bool hide_hints);
+
     // 触摸能按到的按钮。
     //
     // 左下角的四个按十字排布，位置与方向键一一对应（上=播放/暂停，左=上一曲，
@@ -68,8 +83,6 @@ private:
     // 背景图用的纹理，按设置和当前曲目决定；换歌或改设置时重新加载
     void RefreshBackground(ScreenContext& ctx);
     void DrawSongInfo(ScreenContext& ctx);
-    // "第几首 / 共几首"。画在右栏左下角而不是左栏，左栏那一行的高度让给了封面。
-    void DrawTrackCounter(ScreenContext& ctx);
     void DrawProgressBar(ScreenContext& ctx);
     void DrawTransportButtons(ScreenContext& ctx);
     // 右下角的 ABXY 触摸键。只在单栏歌词/频谱下画：双栏时右半边是译文，会挡住。
@@ -96,6 +109,10 @@ private:
     void DrawCoverFullscreen(ScreenContext& ctx);
 
     void HandleTouch(ScreenContext& ctx);
+    // 按住实体键时把对应的屏上按钮也点亮。
+    // 屏上那三个操作区本来就是照着实体键排的，按下时同步高亮，
+    // 用户第一次按就能把"我按的键"和"屏幕上哪个格子"对上。
+    void HighlightHeldButton(ScreenContext& ctx);
     // 手指在歌词区上下拖动：翻看歌词。返回 true 表示这一帧的触摸已被歌词区吃掉。
     bool HandleLyricDrag(ScreenContext& ctx, double delta_seconds);
     // 翻看结束（松手，或右摇杆回中）。开了同步就跳到停留的那一句。
@@ -138,4 +155,5 @@ private:
     double m_lyric_browse_hold{};           // 松手后还要保持多久才滑回去（秒）
     int    m_lyric_browse_index{ -1 };      // 上一帧算出的、落在视图中心的那句
     Rect   m_lyric_rect{};                  // 上一帧歌词区的范围，供触摸判定用
+    Layout m_layout{};                      // 每帧开头算一次，Update 和 Draw 共用
 };
