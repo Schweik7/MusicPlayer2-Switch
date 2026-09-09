@@ -199,9 +199,12 @@ void CPlayerScreen::DrawLyricBackground(ScreenContext& ctx, int x, int y, int wi
     r.PushClip(x, y, width, height);
     // 等比填满并裁切，别把封面拉成长方形
     r.DrawTextureCover(texture, x, y, width, height, 70);
-    // 再压一层暗色。背景图再淡，白色歌词落在浅色区域上也会糊；
-    // 这一层保证对比度，代价只是背景更暗一点。
-    r.FillRect(x, y, width, height, Color{ 0x1F, 0x1F, 0x27, 150 });
+    // 再压一层底色。背景图再淡，歌词落在与自己明度相近的区域上也会糊；
+    // 这一层保证对比度，代价只是背景图更淡一点。
+    //
+    // 必须用主题背景色而不是写死的深色：浅色配色下歌词是深字，
+    // 压一层深色反而把字盖没了。
+    r.FillRect(x, y, width, height, Theme::kBackground.WithAlpha(150));
     r.PopClip();
 }
 
