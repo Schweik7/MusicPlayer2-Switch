@@ -136,10 +136,6 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows.assign(ITEM_COUNT, Row());
 
     // 关掉触摸就是沉浸模式：屏上的按钮全收起来，封面放大。这两件事没必要拆成两个开关。
-    m_rows[ITEM_TOUCH].label = "触摸操作";
-    m_rows[ITEM_TOUCH].value = ctx.input->IsTouchEnabled() ? "开启" : "关闭（沉浸模式）";
-    m_rows[ITEM_TOUCH].actionable = true;
-
     m_rows[ITEM_DIM].label = "空闲自动变暗";
     m_rows[ITEM_DIM].value = DimText(config.GetDimTimeout());
     m_rows[ITEM_DIM].actionable = true;
@@ -151,11 +147,6 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_TRANSLATION].label = "显示歌词翻译";
     m_rows[ITEM_TRANSLATION].value = config.GetShowTranslation() ? "开启" : "关闭";
     m_rows[ITEM_TRANSLATION].actionable = true;
-
-    m_rows[ITEM_LYRIC_LAYOUT].label = "双语歌词排版";
-    m_rows[ITEM_LYRIC_LAYOUT].value = config.GetLyricTwoColumn() ? "双栏（左原文 右译文）"
-                                                                 : "单栏（译文在下方）";
-    m_rows[ITEM_LYRIC_LAYOUT].actionable = true;
 
     m_rows[ITEM_LYRIC_SYNC].label = "拖歌词跟随进度";
     m_rows[ITEM_LYRIC_SYNC].value = config.GetLyricSeekSync() ? "开启" : "关闭（仅翻看）";
@@ -183,8 +174,8 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_HIDE_HINTS].value = config.GetHideHints() ? "隐藏" : "显示";
     m_rows[ITEM_HIDE_HINTS].actionable = true;
 
-    m_rows[ITEM_EMBED].label = "下载后写入歌曲文件";
-    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? "开启" : "关闭（只存旁边）";
+    m_rows[ITEM_EMBED].label = "下载歌词封面后嵌入歌曲文件";
+    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? "开启" : "关闭（存同级目录）";
     m_rows[ITEM_EMBED].actionable = true;
 
     m_rows[ITEM_BROWSE].label = "浏览 SD 卡";
@@ -222,15 +213,6 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
 
     switch (index)
     {
-    case ITEM_TOUCH:
-    {
-        bool enabled = !ctx.input->IsTouchEnabled();
-        ctx.input->SetTouchEnabled(enabled);
-        config.SetTouchEnabled(enabled);
-        ctx.ShowToast(enabled ? "已启用触摸操作"
-                              : "沉浸模式：触摸已关闭，按下左摇杆（LS）恢复");
-        break;
-    }
     case ITEM_DIM:
     {
         // 在几个档位之间循环
@@ -252,13 +234,6 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
     case ITEM_TRANSLATION:
         config.SetShowTranslation(!config.GetShowTranslation());
         break;
-    case ITEM_LYRIC_LAYOUT:
-    {
-        bool two_column = !config.GetLyricTwoColumn();
-        config.SetLyricTwoColumn(two_column);
-        ctx.ShowToast(two_column ? "歌词改为双栏显示" : "歌词改为单栏显示");
-        break;
-    }
     case ITEM_LYRIC_SYNC:
     {
         const bool sync = !config.GetLyricSeekSync();
@@ -325,7 +300,7 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         const bool embed = !config.GetEmbedDownloads();
         config.SetEmbedDownloads(embed);
         ctx.ShowToast(embed ? "下载的歌词封面将写进 MP3 / FLAC 文件"
-                            : "下载的歌词封面只保存在歌曲旁边");
+                            : "下载的歌词封面存到歌曲的同级目录");
         break;
     }
     case ITEM_UPDATE_SOURCE:

@@ -182,16 +182,30 @@ curl "ftp://<IP>:<PORT>/config/MusicPlayer2/diag.log" -o diag.log
 从上游的 fork（`Schweik7/MusicPlayer2`）里用 `git subtree split -P SwitchPort` 拆出来的，
 历史原样保留。
 
-每个版本要发三处：
+每个版本发两处：
 
 | 目标 | 为什么 |
 | --- | --- |
 | 新仓库的 Release | 主源，`Version.h` 里的 `MP2_SWITCH_REPO_NAME` 指向它 |
 | 备用源 | GitHub 连不上时的回退，见 6.4 |
-| 旧仓库的 Release | **只在过渡期需要**：装在用户机器上的 0.7.x 查的还是旧仓库 |
 
-第三条什么时候可以停：确认没人再用 0.7.x 之后。改仓库名这件事天然有这个尾巴——
-做替换的永远是旧版本的代码。
+**过渡期已经结束。** 0.8.1 之前还要往旧仓库（上游的 fork `Schweik7/MusicPlayer2`）
+发一份，因为装在机器上的 0.7.x 查的是那个地址；确认在用的机器都升到 0.8.x 之后，
+旧仓库已删除。改仓库名天然有这个尾巴——**做替换的永远是旧版本的代码**，
+所以新地址要等旧版本自己更新过一次才生效。以后再改地址仍然要按这个节奏走。
+
+### 6.0.1 推送到独立仓库要用 cherry-pick，不能直接推 subtree split
+
+独立仓库的 main 上有几个只存在于那边的提交（补 LICENSE 那次）。
+`git subtree split` 每次都从 fork 的历史重算，算出来的 SHA 和远端对不上，
+直接推会被判成非快进。正确做法：
+
+```bash
+git subtree split -P SwitchPort -b switch-standalone
+git checkout -b release-tmp standalone/main
+git cherry-pick <本次的几个提交在 split 分支上的 SHA>
+git push standalone release-tmp:main
+```
 
 ### 6.1 改版本号（两处，必须一起改）
 

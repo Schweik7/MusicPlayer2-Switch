@@ -20,7 +20,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 APP_TITLE   := MusicPlayer2
 APP_AUTHOR  := zhongyang219 / Switch port
 # 与 source/Version.h 的 MP2_SWITCH_VERSION 保持一致：hbmenu 显示的是这个
-APP_VERSION := 0.8.1
+APP_VERSION := 0.8.2
 
 TARGET      := MusicPlayer2
 BUILD       := build

@@ -27,11 +27,13 @@ public:
 private:
     enum ItemId
     {
-        ITEM_TOUCH = 0,
-        ITEM_DIM,
+        // 触摸开关和双语排版不在这里出现：前者在顶栏有常驻按钮（另有 LS），
+        // 后者在歌词区工具排上有 1C/2C 按钮（另有 R）。
+        // 两条路都齐了就不必在设置里再放一份——那只会把列表撑长，
+        // 把底部的下载进度挤出可视区。
+        ITEM_DIM = 0,
         ITEM_THEME,
         ITEM_TRANSLATION,
-        ITEM_LYRIC_LAYOUT,
         ITEM_LYRIC_SYNC,
         ITEM_LYRIC_OFFSET,
         ITEM_LYRIC_BACKGROUND,
