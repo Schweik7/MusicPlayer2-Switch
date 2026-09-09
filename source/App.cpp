@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "core/Lang.h"
 
 void CApp::BootStage(const char* name)
 {
@@ -28,7 +29,7 @@ void CApp::BootStage(const char* name)
     m_renderer.Clear(Theme::kBackground);
     m_renderer.DrawText("MusicPlayer2", Theme::kScreenWidth / 2, Theme::kScreenHeight / 2 - 60,
                         CRenderer::FS_LARGE, Theme::kText, CRenderer::ALIGN_CENTER);
-    m_renderer.DrawText(std::string("正在启动 · ") + name, Theme::kScreenWidth / 2,
+    m_renderer.DrawText(std::string(T("正在启动 · ")) + name, Theme::kScreenWidth / 2,
                         Theme::kScreenHeight / 2 + 10, CRenderer::FS_SMALL, Theme::kTextDim,
                         CRenderer::ALIGN_CENTER);
     m_renderer.EndFrame();
@@ -66,7 +67,7 @@ bool CApp::Init()
         m_last_error = m_renderer.GetLastError();
         return false;
     }
-    BootStage(custom_font.empty() ? "图形与字体" : "图形与字体(自带)");
+    BootStage(custom_font.empty() ? T("图形与字体") : T("图形与字体(自带)"));
 
     Diag::ProbeFont(m_renderer);
     if (!m_player.Init())
@@ -74,11 +75,13 @@ bool CApp::Init()
         m_last_error = m_player.GetLastError();
         return false;
     }
-    BootStage("音频与网络");
+    BootStage(T("音频与网络"));
 
     Diag::ProbeNetwork(m_player.GetHttpClient());
 
     m_input.Init();
+    // 语言和配色都要在第一帧之前定下来，否则会闪一下默认值再切过去
+    Lang::SetLanguage(static_cast<Lang::Language>(m_player.GetConfig().GetLanguage()));
     // 配色要在第一帧之前定下来，否则会闪一下深色再变浅色
     Theme::SetMode(m_player.GetConfig().GetLightTheme() ? Theme::MODE_LIGHT
                                                        : Theme::MODE_DARK);
@@ -103,17 +106,17 @@ bool CApp::Init()
     m_ctx.player = &m_player;
     m_ctx.renderer = &m_renderer;
     m_ctx.input = &m_input;
-    BootStage("子系统");
+    BootStage(T("子系统"));
 
     RestoreLastSession();
-    BootStage("恢复上次会话");
+    BootStage(T("恢复上次会话"));
 
     m_current = SCREEN_PLAYER;
     m_screens[m_current]->OnEnter(m_ctx);
     if (!m_pending_update_note.empty())
         m_ctx.ShowToast(m_pending_update_note);
 
-    m_boot_timings.push_back(BootStageTime{ "合计", SDL_GetTicks() - m_boot_start_ticks });
+    m_boot_timings.push_back(BootStageTime{ T("合计"), SDL_GetTicks() - m_boot_start_ticks });
     Diag::Logf("启动合计 %u 毫秒", m_boot_timings.back().ms);
     return true;
 }
@@ -138,7 +141,7 @@ void CApp::RestoreLastSession()
     // 所以丢给后台线程，界面先起来，扫完再把结果接进去。
     std::string music_dir = config.GetMusicDir();
     Diag::Logf("默认音乐目录: %s (是目录=%s)", music_dir.c_str(),
-               FileUtil::IsDirectory(music_dir) ? "是" : "否");
+               FileUtil::IsDirectory(music_dir) ? T("是") : T("否"));
     if (!FileUtil::IsDirectory(music_dir))
         return;
     Diag::ProbeDirectory(music_dir);
@@ -170,7 +173,7 @@ void CApp::HandleScanResult()
     m_player.SelectIndex(m_player.GetConfig().GetLastIndex());
 
     char message[64];
-    std::snprintf(message, sizeof(message), "音乐库扫描完成，共 %d 首", count);
+    std::snprintf(message, sizeof(message), T("音乐库扫描完成，共 %d 首"), count);
     m_ctx.ShowToast(message);
 }
 
@@ -305,17 +308,17 @@ void CApp::DrawHeader()
     // 设置和播放列表做成常驻按钮，比藏在 ＋ / − 键里好找，
     // 也让纯触摸操作能进得去
     int left_cursor = title_x + title_w + 16;
-    m_settings_button = DrawChip(m_renderer, "设置", left_cursor, 26, Theme::kPanelAlt,
+    m_settings_button = DrawChip(m_renderer, T("设置"), left_cursor, 26, Theme::kPanelAlt,
                                  Theme::kText);
     left_cursor = m_settings_button.x + m_settings_button.w + 8;
-    m_playlist_button = DrawChip(m_renderer, "列表", left_cursor, 26, Theme::kPanelAlt,
+    m_playlist_button = DrawChip(m_renderer, T("列表"), left_cursor, 26, Theme::kPanelAlt,
                                  Theme::kText);
 
     // 触摸开关和设置、列表排在一起：它们是同一类东西（常驻的、点一下就生效的入口），
     // 原来单独摆在右上角，既和右边的时钟抢位置，也让人以为它是状态显示而不是按钮。
     const bool touch_on = m_input.IsTouchEnabled();
     left_cursor = m_playlist_button.x + m_playlist_button.w + 8;
-    m_touch_button = DrawChip(m_renderer, touch_on ? "触摸 开" : "触摸 关", left_cursor, 26,
+    m_touch_button = DrawChip(m_renderer, touch_on ? T("触摸 开") : T("触摸 关"), left_cursor, 26,
                               touch_on ? Theme::kPanelAlt : Theme::kAccentDim,
                               touch_on ? Theme::kText : Theme::kTextDim);
 
@@ -335,7 +338,7 @@ void CApp::DrawHeader()
     CLibraryScanner::Progress scan = m_scanner.Poll();
     if (scan.running)
     {
-        m_renderer.DrawText("正在扫描音乐库…", Theme::kScreenWidth / 2, 22,
+        m_renderer.DrawText(T("正在扫描音乐库…"), Theme::kScreenWidth / 2, 22,
                             CRenderer::FS_NORMAL, Theme::kHighlight, CRenderer::ALIGN_CENTER);
     }
     else
@@ -363,8 +366,8 @@ void CApp::ToggleTouchEnabled()
     m_player.GetConfig().SetTouchEnabled(enabled);
     // 关掉触摸就是沉浸模式：屏上的按钮全收起来，封面和歌词占满。
     // 必须把"怎么退出"说清楚——收起来之后连那个开关本身都不在屏幕上了。
-    m_ctx.ShowToast(enabled ? "已启用触摸操作"
-                            : "沉浸模式：触摸已关闭，按下左摇杆（LS）恢复");
+    m_ctx.ShowToast(enabled ? T("已启用触摸操作")
+                            : T("沉浸模式：触摸已关闭，按下左摇杆（LS）恢复"));
 }
 
 void CApp::HandleHeaderTouch()
@@ -409,7 +412,7 @@ void CApp::DrawDimOverlay()
         return;
     // 背光已经调暗了，这里再压一层是为了让"省电中"这个状态一眼可辨
     m_renderer.FillRect(0, 0, Theme::kScreenWidth, Theme::kScreenHeight, Color{ 0, 0, 0, 150 });
-    m_renderer.DrawText("省电模式 · 按任意键唤醒", Theme::kScreenWidth / 2,
+    m_renderer.DrawText(T("省电模式 · 按任意键唤醒"), Theme::kScreenWidth / 2,
                         Theme::kScreenHeight - 120, CRenderer::FS_SMALL, Theme::kTextDim,
                         CRenderer::ALIGN_CENTER);
 }

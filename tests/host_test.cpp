@@ -23,6 +23,7 @@ void RunAudioTests();
 void RunDurationTests();
 void RunTagWriteTests();
 void RunTagTests();
+void RunLangTests();
 
 
 // ---------------------------------------------------------------- StringUtil
@@ -569,6 +570,7 @@ int main()
     RunAudioTests();
     RunDurationTests();
     RunTagWriteTests();
+    RunLangTests();
 
     std::printf("\n--- 在线下载 ---\n");
     RunTagTests();

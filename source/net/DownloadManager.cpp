@@ -7,6 +7,7 @@
 
 #include <cstdio>
 #include <functional>
+#include "../core/Lang.h"
 
 CDownloadManager::CDownloadManager()
 {
@@ -37,7 +38,7 @@ const char* CDownloadManager::GetProviderName() const
 
 const char* CDownloadManager::GetProviderName(ProviderId id)
 {
-    return id == PROVIDER_QQ ? "QQ音乐" : "网易云音乐";
+    return id == PROVIDER_QQ ? T("QQ音乐") : T("网易云音乐");
 }
 
 std::string CDownloadManager::GetLyricSavePath(const std::string& audio_file_path)
@@ -91,8 +92,8 @@ std::string CDownloadManager::EmbedIntoAudioFile(const AutoRequest& request)
                                                       has_cover ? &cover : nullptr,
                                                       has_lyric ? &lyric : nullptr);
     if (result == TagWriter::RESULT_OK)
-        return "已写入歌曲文件";
-    return std::string("嵌入失败：") + TagWriter::ResultText(result);
+        return T("已写入歌曲文件");
+    return std::string(T("嵌入失败：")) + TagWriter::ResultText(result);
 }
 
 void CDownloadManager::SetStatus(State state, const std::string& message)
@@ -154,7 +155,7 @@ bool CDownloadManager::StartSearch(const std::string& keyword, int result_count)
         std::lock_guard<std::mutex> lock(m_mutex);
         m_status = Status();
         m_status.state = ST_SEARCHING;
-        m_status.message = std::string("正在搜索：") + keyword;
+        m_status.message = std::string(T("正在搜索：")) + keyword;
     }
 
     RunTask([this, keyword, result_count]() { DoSearch(keyword, result_count); });
@@ -178,7 +179,7 @@ void CDownloadManager::DoSearch(const std::string& keyword, int result_count)
     }
     if (!ok)
     {
-        SetStatus(ST_FAILED, "搜索失败：" + response.error);
+        SetStatus(ST_FAILED, T("搜索失败：") + response.error);
         return;
     }
 
@@ -190,13 +191,13 @@ void CDownloadManager::DoSearch(const std::string& keyword, int result_count)
     if (m_status.results.empty())
     {
         m_status.state = ST_FAILED;
-        m_status.message = "没有搜索到匹配的歌曲";
+        m_status.message = T("没有搜索到匹配的歌曲");
     }
     else
     {
         m_status.state = ST_SEARCH_DONE;
         char buff[64];
-        std::snprintf(buff, sizeof(buff), "找到 %d 个结果",
+        std::snprintf(buff, sizeof(buff), T("找到 %d 个结果"),
                       static_cast<int>(m_status.results.size()));
         m_status.message = buff;
     }
@@ -217,7 +218,7 @@ bool CDownloadManager::StartDownloadSelected(int index, const AutoRequest& reque
         item = m_status.results[index];
         m_status.matched_index = index;
         m_status.state = ST_DOWNLOADING;
-        m_status.message = "正在下载：" + item.GetDisplayName();
+        m_status.message = T("正在下载：") + item.GetDisplayName();
         m_status.saved_lyric_path.clear();
         m_status.saved_cover_path.clear();
     }
@@ -250,10 +251,10 @@ void CDownloadManager::PerformDownloads(const DownloadItem& item, const AutoRequ
         m_status.state = ST_SUCCESS;
         std::string done;
         if (lyric_ok)
-            done += "歌词";
+            done += T("歌词");
         if (cover_ok)
-            done += done.empty() ? "封面" : "、封面";
-        m_status.message = done + "下载成功";
+            done += done.empty() ? T("封面") : T("、封面");
+        m_status.message = done + T("下载成功");
         if (!embed_note.empty())
             m_status.message += "，" + embed_note;
     }
@@ -261,8 +262,8 @@ void CDownloadManager::PerformDownloads(const DownloadItem& item, const AutoRequ
     {
         m_status.state = ST_FAILED;
         // DoDownloadXxx 失败时把原因写在了 message 里，这里只在没有原因时兜底
-        if (m_status.message.empty() || StringUtil::StartsWith(m_status.message, "正在下载"))
-            m_status.message = "下载失败";
+        if (m_status.message.empty() || StringUtil::StartsWith(m_status.message, T("正在下载")))
+            m_status.message = T("下载失败");
     }
 }
 
@@ -277,7 +278,7 @@ bool CDownloadManager::StartAutoDownload(const std::string& keyword, const AutoR
         std::lock_guard<std::mutex> lock(m_mutex);
         m_status = Status();
         m_status.state = ST_SEARCHING;
-        m_status.message = std::string("正在搜索：") + keyword;
+        m_status.message = std::string(T("正在搜索：")) + keyword;
     }
 
     RunTask([this, keyword, request]() {
@@ -301,13 +302,13 @@ bool CDownloadManager::StartAutoDownload(const std::string& keyword, const AutoR
             if (matched < 0)
             {
                 m_status.state = ST_FAILED;
-                m_status.message = "没有找到足够匹配的结果，请手动选择";
+                m_status.message = T("没有找到足够匹配的结果，请手动选择");
                 return;
             }
             m_status.matched_index = matched;
             item = m_status.results[matched];
             m_status.state = ST_DOWNLOADING;
-            m_status.message = "正在下载：" + item.GetDisplayName();
+            m_status.message = T("正在下载：") + item.GetDisplayName();
         }
 
         PerformDownloads(item, request);
@@ -324,14 +325,14 @@ bool CDownloadManager::DoDownloadLyric(const DownloadItem& item, const AutoReque
     HttpResponse response;
     if (!m_http->Get(url, m_provider->GetExtraHeaders(), response))
     {
-        SetStatus(ST_DOWNLOADING, "歌词下载失败：" + response.error);
+        SetStatus(ST_DOWNLOADING, T("歌词下载失败：") + response.error);
         return false;
     }
 
     std::string lyric;
     if (!m_provider->ParseLyric(response.body, request.with_translation, lyric))
     {
-        SetStatus(ST_DOWNLOADING, "这首歌没有歌词");
+        SetStatus(ST_DOWNLOADING, T("这首歌没有歌词"));
         return false;
     }
 
@@ -344,7 +345,7 @@ bool CDownloadManager::DoDownloadLyric(const DownloadItem& item, const AutoReque
     std::string save_path = GetLyricSavePath(request.audio_file_path);
     if (!FileUtil::WriteAll(save_path, lyric))
     {
-        SetStatus(ST_DOWNLOADING, "歌词写入失败：" + save_path);
+        SetStatus(ST_DOWNLOADING, T("歌词写入失败：") + save_path);
         return false;
     }
 
@@ -365,14 +366,14 @@ bool CDownloadManager::DoDownloadCover(const DownloadItem& item, const AutoReque
     HttpResponse info_response;
     if (!m_http->Get(info_url, m_provider->GetExtraHeaders(), info_response))
     {
-        SetStatus(ST_DOWNLOADING, "封面信息获取失败：" + info_response.error);
+        SetStatus(ST_DOWNLOADING, T("封面信息获取失败：") + info_response.error);
         return false;
     }
 
     std::string image_url = m_provider->ParseCoverUrl(info_response.body);
     if (image_url.empty())
     {
-        SetStatus(ST_DOWNLOADING, "这首歌没有可用的封面");
+        SetStatus(ST_DOWNLOADING, T("这首歌没有可用的封面"));
         return false;
     }
     if (m_cancel.load())
@@ -382,19 +383,19 @@ bool CDownloadManager::DoDownloadCover(const DownloadItem& item, const AutoReque
     std::string error;
     if (!m_http->GetBinary(image_url, m_provider->GetExtraHeaders(), image_data, error))
     {
-        SetStatus(ST_DOWNLOADING, "封面下载失败：" + error);
+        SetStatus(ST_DOWNLOADING, T("封面下载失败：") + error);
         return false;
     }
     if (image_data.size() < 128)        // 太小的响应基本是错误页而不是图片
     {
-        SetStatus(ST_DOWNLOADING, "封面数据无效");
+        SetStatus(ST_DOWNLOADING, T("封面数据无效"));
         return false;
     }
 
     std::string save_path = GetCoverSavePath(request.audio_file_path, image_url);
     if (!FileUtil::WriteAll(save_path, image_data))
     {
-        SetStatus(ST_DOWNLOADING, "封面写入失败：" + save_path);
+        SetStatus(ST_DOWNLOADING, T("封面写入失败：") + save_path);
         return false;
     }
 

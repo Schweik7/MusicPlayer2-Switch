@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -233,8 +234,9 @@ const char* CPlayerScreen::GetButtonHints() const
     // 用 '|' 分段，底栏会按段均匀铺开。
     // 左摇杆的功能已经由歌词区左上角那个十字画出来了，这里不再重复。
     // 走带控制同理（左下角十字），ABXY 同理（右下角菱形）。
-    return "ZL/ZR ±5秒|右摇杆↑↓ 翻歌词|L 封面大小|R 单栏/双栏|LS 触摸|RS 下载|"
-           "B×2 退出|− 列表|＋ 设置";
+    // 整条写成一个字面量：原来是两个相邻字面量靠编译器拼，
+    // 现在要整条去查表，不能拆成两次 T()
+    return T("ZL/ZR ±5秒|右摇杆↑↓ 翻歌词|L 封面大小|R 单栏/双栏|LS 触摸|RS 下载|B×2 退出|− 列表|＋ 设置");
 }
 
 void CPlayerScreen::GoBack(ScreenContext& ctx)
@@ -304,14 +306,14 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         if (m_cover != nullptr)
             m_cover_fullscreen = !m_cover_fullscreen;
         else
-            ctx.ShowToast("这首歌没有封面");
+            ctx.ShowToast(T("这首歌没有封面"));
     }
     if (input.IsDown(CInputMap::BTN_R))
     {
         CConfig& config = player.GetConfig();
         const bool two_column = !config.GetLyricTwoColumn();
         config.SetLyricTwoColumn(two_column);
-        ctx.ShowToast(two_column ? "歌词改为双栏（左原文 右译文）" : "歌词改为单栏");
+        ctx.ShowToast(two_column ? T("歌词改为双栏（左原文 右译文）") : T("歌词改为单栏"));
     }
 
     if (input.IsRepeat(CInputMap::BTN_ZR))
@@ -338,7 +340,7 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
     if (input.IsDown(CInputMap::BTN_STICK_R))
     {
         if (player.GetCurrentSong().file_path.empty())
-            ctx.ShowToast("没有正在播放的曲目");
+            ctx.ShowToast(T("没有正在播放的曲目"));
         else
             ctx.next_screen = SCREEN_DOWNLOAD;
     }
@@ -356,7 +358,7 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         if (input.IsDown(CInputMap::BTN_DPAD_DOWN))
         {
             player.Stop();
-            ctx.ShowToast("已停止");
+            ctx.ShowToast(T("已停止"));
         }
     }
 
@@ -410,13 +412,13 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         if (input.IsRepeat(CInputMap::BTN_DPAD_RIGHT))
         {
             player.AdjustLyricOffset(500);
-            ctx.ShowToast("歌词延后 0.5 秒");
+            ctx.ShowToast(T("歌词延后 0.5 秒"));
             m_exit_prompt_timer = 0.0;      // 这次 B 是当修饰键用的，不算退出意图
         }
         if (input.IsRepeat(CInputMap::BTN_DPAD_LEFT))
         {
             player.AdjustLyricOffset(-500);
-            ctx.ShowToast("歌词提前 0.5 秒");
+            ctx.ShowToast(T("歌词提前 0.5 秒"));
             m_exit_prompt_timer = 0.0;
         }
     }
@@ -431,7 +433,7 @@ void CPlayerScreen::Update(ScreenContext& ctx, double delta_seconds)
         else
         {
             m_exit_prompt_timer = 1.5;
-            ctx.ShowToast("再按一次 B 退出");
+            ctx.ShowToast(T("再按一次 B 退出"));
         }
     }
     if (m_exit_prompt_timer > 0.0)
@@ -511,7 +513,7 @@ void CPlayerScreen::ActivateFaceButton(ScreenContext& ctx, HitButton button)
         else
         {
             m_exit_prompt_timer = 1.5;
-            ctx.ShowToast("再点一次 B 退出");
+            ctx.ShowToast(T("再点一次 B 退出"));
         }
         break;
     default:
@@ -704,12 +706,12 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
     else if (kBtnStop.Contains(touch.x, touch.y))
     {
         player.Stop();
-        ctx.ShowToast("已停止");
+        ctx.ShowToast(T("已停止"));
     }
     else if (kBtnDownload.Contains(touch.x, touch.y))
     {
         if (player.GetCurrentSong().file_path.empty())
-            ctx.ShowToast("没有正在播放的曲目");
+            ctx.ShowToast(T("没有正在播放的曲目"));
         else
             ctx.next_screen = SCREEN_DOWNLOAD;
     }
@@ -723,7 +725,7 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
         CConfig& config = player.GetConfig();
         const bool two_column = !config.GetLyricTwoColumn();
         config.SetLyricTwoColumn(two_column);
-        ctx.ShowToast(two_column ? "歌词改为双栏（左原文 右译文）" : "歌词改为单栏");
+        ctx.ShowToast(two_column ? T("歌词改为双栏（左原文 右译文）") : T("歌词改为单栏"));
     }
     else if (kBtnSeekBack.Contains(touch.x, touch.y))
     {
@@ -747,7 +749,7 @@ void CPlayerScreen::HandleTouch(ScreenContext& ctx)
     {
         const bool sync = !player.GetConfig().GetLyricSeekSync();
         player.GetConfig().SetLyricSeekSync(sync);
-        ctx.ShowToast(sync ? "拖动歌词将同时改变播放进度" : "拖动歌词只是翻看，松手后自动归位");
+        ctx.ShowToast(sync ? T("拖动歌词将同时改变播放进度") : T("拖动歌词只是翻看，松手后自动归位"));
     }
     else if (face_visible && kBtnFaceA.Contains(touch.x, touch.y))
     {
@@ -818,9 +820,9 @@ void CPlayerScreen::DrawSongInfo(ScreenContext& ctx)
 
     if (song.file_path.empty())
     {
-        r.DrawText("没有正在播放的曲目", kLeftX, m_layout.info_y, CRenderer::FS_LARGE,
+        r.DrawText(T("没有正在播放的曲目"), kLeftX, m_layout.info_y, CRenderer::FS_LARGE,
                    Theme::kTextDim);
-        r.DrawText("按 ＋ 浏览 SD 卡上的音乐", kLeftX, m_layout.info_y + 44, CRenderer::FS_NORMAL,
+        r.DrawText(T("按 ＋ 浏览 SD 卡上的音乐"), kLeftX, m_layout.info_y + 44, CRenderer::FS_NORMAL,
                    Theme::kTextDisabled);
         return;
     }
@@ -1014,7 +1016,7 @@ void CPlayerScreen::DrawLyricTools(ScreenContext& ctx)
     if (lyric_view && offset != 0)
     {
         char text[32];
-        std::snprintf(text, sizeof(text), "歌词 %+.1f 秒", offset / 1000.0);
+        std::snprintf(text, sizeof(text), T("歌词 %+.1f 秒"), offset / 1000.0);
         r.DrawText(text, kBtnDownload.x - 16, kContentTop + 10, CRenderer::FS_SMALL,
                    Theme::kHighlight, CRenderer::ALIGN_RIGHT);
     }
@@ -1100,7 +1102,7 @@ void CPlayerScreen::DrawStickCross(ScreenContext& ctx)
 
     // 逐秒进退这两个键没有数字说明，标一行免得被当成上一曲/下一曲。
     // 放在右键右侧而不是十字下方：下方紧挨着歌词，横向那块反而是空的。
-    r.DrawText("±1 秒", kBtnSeekForward.x + kBtnSeekForward.w + 8,
+    r.DrawText(T("±1 秒"), kBtnSeekForward.x + kBtnSeekForward.w + 8,
                kStickRowMid + kStickCell / 2 - 10, CRenderer::FS_SMALL, Theme::kTextDisabled);
 }
 
@@ -1111,10 +1113,10 @@ void CPlayerScreen::DrawFaceButtons(ScreenContext& ctx)
 
     struct FaceDef { const Rect& rect; HitButton id; const char* key; const char* label; };
     const FaceDef faces[] = {
-        { kBtnFaceX, HIT_FACE_X, "X", "视图" },
-        { kBtnFaceY, HIT_FACE_Y, "Y", "模式" },
-        { kBtnFaceA, HIT_FACE_A, "A", playing ? "暂停" : "播放" },
-        { kBtnFaceB, HIT_FACE_B, "B", "退出" },
+        { kBtnFaceX, HIT_FACE_X, "X", T("视图") },
+        { kBtnFaceY, HIT_FACE_Y, "Y", T("模式") },
+        { kBtnFaceA, HIT_FACE_A, "A", playing ? T("暂停") : T("播放") },
+        { kBtnFaceB, HIT_FACE_B, "B", T("退出") },
     };
 
     for (const FaceDef& face : faces)
@@ -1227,9 +1229,9 @@ void CPlayerScreen::DrawLyricView(ScreenContext& ctx, int x, int y, int width, i
 
     if (lyrics.IsEmpty())
     {
-        r.DrawText("暂无歌词", x + width / 2, y + height / 2 - 20, CRenderer::FS_LARGE,
+        r.DrawText(T("暂无歌词"), x + width / 2, y + height / 2 - 20, CRenderer::FS_LARGE,
                    Theme::kTextDisabled, CRenderer::ALIGN_CENTER);
-        r.DrawText("把同名 .lrc 文件放在歌曲旁边，或按下右摇杆在线下载",
+        r.DrawText(T("把同名 .lrc 文件放在歌曲旁边，或按下右摇杆在线下载"),
                    x + width / 2, y + height / 2 + 20,
                    CRenderer::FS_SMALL, Theme::kTextDisabled, CRenderer::ALIGN_CENTER);
         return;
@@ -1459,9 +1461,9 @@ void CPlayerScreen::DrawCoverView(ScreenContext& ctx, int x, int y, int width, i
 
     if (m_cover == nullptr)
     {
-        r.DrawText("这首歌没有封面", x + width / 2, y + height / 2 - 20, CRenderer::FS_LARGE,
+        r.DrawText(T("这首歌没有封面"), x + width / 2, y + height / 2 - 20, CRenderer::FS_LARGE,
                    Theme::kTextDisabled, CRenderer::ALIGN_CENTER);
-        r.DrawText("按下右摇杆可以在线下载", x + width / 2, y + height / 2 + 20,
+        r.DrawText(T("按下右摇杆可以在线下载"), x + width / 2, y + height / 2 + 20,
                    CRenderer::FS_SMALL, Theme::kTextDisabled, CRenderer::ALIGN_CENTER);
         return;
     }
@@ -1491,7 +1493,7 @@ void CPlayerScreen::DrawVolumeOverlay(ScreenContext& ctx)
     r.FillRoundRect(x, y, w, h, 10, Theme::kPanel.WithAlpha(alpha));
 
     char buff[32];
-    std::snprintf(buff, sizeof(buff), "音量 %d%%", volume);
+    std::snprintf(buff, sizeof(buff), T("音量 %d%%"), volume);
     r.DrawText(buff, x + 16, y + 10, CRenderer::FS_SMALL, Theme::kText.WithAlpha(alpha));
 
     const int bar_x = x + 16, bar_y = y + 44, bar_w = w - 32;
@@ -1518,7 +1520,7 @@ void CPlayerScreen::DrawCoverFullscreen(ScreenContext& ctx)
     r.DrawTextEllipsis(song.GetDisplayName(), Theme::kScreenWidth / 2,
                        Theme::kScreenHeight - 30, Theme::kScreenWidth - 200,
                        CRenderer::FS_SMALL, Theme::kTextDim, CRenderer::ALIGN_CENTER);
-    r.DrawText("点一下或按 B 返回", Theme::kScreenWidth - Theme::kPadding, 12,
+    r.DrawText(T("点一下或按 B 返回"), Theme::kScreenWidth - Theme::kPadding, 12,
                CRenderer::FS_SMALL, Theme::kTextDisabled, CRenderer::ALIGN_RIGHT);
 }
 

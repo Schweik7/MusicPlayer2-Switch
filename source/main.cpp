@@ -4,13 +4,14 @@
 #include <switch.h>
 
 #include <cstdio>
+#include "core/Lang.h"
 
 // 初始化失败时没法用图形界面报错，退回到控制台把原因打出来，
 // 否则用户只会看到程序一闪而过。
 static void ShowFatalError(const std::string& message)
 {
     consoleInit(nullptr);
-    std::printf("\n MusicPlayer2 启动失败\n\n %s\n\n 按 + 退出。\n", message.c_str());
+    std::printf(T("\n MusicPlayer2 启动失败\n\n %s\n\n 按 + 退出。\n"), message.c_str());
     consoleUpdate(nullptr);
 
     PadState pad;
@@ -46,7 +47,7 @@ int main(int argc, char* argv[])
         Diag::Logf("App::Init 失败: %s", error.c_str());
         app.Uninit();
         Diag::End();
-        ShowFatalError(error.empty() ? "未知错误" : error);
+        ShowFatalError(error.empty() ? T("未知错误") : error);
         return 1;
     }
 

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <random>
+#include "core/Lang.h"
 
 namespace
 {
@@ -178,7 +179,7 @@ bool CPlayer::LoadPlaylistFile(const std::string& file_path, bool auto_play)
     CPlaylistFile playlist(&m_path_mapper);
     if (!playlist.LoadFromFile(file_path))
     {
-        m_last_error = "无法读取播放列表: " + file_path;
+        m_last_error = T("无法读取播放列表: ") + file_path;
         return false;
     }
     m_playlist_path = file_path;
@@ -398,12 +399,12 @@ const char* CPlayer::GetRepeatModeName(CConfig::RepeatMode mode)
 {
     switch (mode)
     {
-    case CConfig::RM_PLAY_ORDER:    return "顺序播放";
-    case CConfig::RM_PLAY_SHUFFLE:  return "随机播放";
-    case CConfig::RM_LOOP_PLAYLIST: return "列表循环";
-    case CConfig::RM_LOOP_TRACK:    return "单曲循环";
-    case CConfig::RM_PLAY_TRACK:    return "单曲播放";
-    default:                        return "未知";
+    case CConfig::RM_PLAY_ORDER:    return T("顺序播放");
+    case CConfig::RM_PLAY_SHUFFLE:  return T("随机播放");
+    case CConfig::RM_LOOP_PLAYLIST: return T("列表循环");
+    case CConfig::RM_LOOP_TRACK:    return T("单曲循环");
+    case CConfig::RM_PLAY_TRACK:    return T("单曲播放");
+    default:                        return T("未知");
     }
 }
 

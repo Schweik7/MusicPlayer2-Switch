@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -116,7 +117,7 @@ bool CUpdater::StartCheck(Source source)
         std::lock_guard<std::mutex> lock(m_mutex);
         m_status = Status();
         m_status.state = ST_CHECKING;
-        m_status.message = "正在检查更新…";
+        m_status.message = T("正在检查更新…");
     }
     RunTask(&CUpdater::DoCheck);
     return true;
@@ -131,7 +132,7 @@ bool CUpdater::StartInstall()
         if (m_status.state != ST_UPDATE_AVAILABLE || m_status.asset_url.empty())
             return false;
         m_status.state = ST_DOWNLOADING;
-        m_status.message = "正在下载新版本…";
+        m_status.message = T("正在下载新版本…");
         m_status.downloaded = 0;
         m_status.total = 0;
     }
@@ -191,7 +192,7 @@ void CUpdater::DoCheck()
             if (QueryRelease(MP2_SWITCH_MIRROR_URL, true, mirror_error))
                 ok = true;
             else
-                error += "；备用源也失败：" + mirror_error;
+                error += T("；备用源也失败：") + mirror_error;
         }
     }
 
@@ -199,29 +200,30 @@ void CUpdater::DoCheck()
         return;
     if (!ok)
     {
-        SetStatus(ST_FAILED, "检查更新失败：" + error);
+        SetStatus(ST_FAILED, T("检查更新失败：") + error);
         return;
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
-    const std::string source = m_status.from_mirror ? "（备用源）" : "";
+    const std::string source = m_status.from_mirror ? T("（备用源）") : "";
 
     if (!IsNewerVersion(m_status.latest_version, MP2_SWITCH_VERSION))
     {
         m_status.state = ST_UP_TO_DATE;
-        m_status.message = "已是最新版本（" MP2_SWITCH_VERSION "）" + source;
+        m_status.message = std::string(T("已是最新版本（")) + MP2_SWITCH_VERSION
+                         + "）" + source;
     }
     else if (m_status.asset_url.empty())
     {
         // 有新版本但没带 NRO，只能让用户自己去下
         m_status.state = ST_FAILED;
-        m_status.message = "发现 " + m_status.latest_version
-                         + "，但该版本没有附带 " MP2_SWITCH_ASSET_NAME;
+        m_status.message = T("发现 ") + m_status.latest_version
+                         + T("，但该版本没有附带 ") + MP2_SWITCH_ASSET_NAME;
     }
     else
     {
         m_status.state = ST_UPDATE_AVAILABLE;
-        m_status.message = "发现新版本 " + m_status.latest_version + source;
+        m_status.message = T("发现新版本 ") + m_status.latest_version + source;
     }
 }
 
@@ -234,7 +236,7 @@ void CUpdater::RestoreBackup(bool had_old, const std::string& backup_path)
     if (!FileUtil::MoveOverwrite(backup_path, m_self_path))
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_status.message = "还原失败，原版本仍在 " + backup_path + "，请手动改回 "
+        m_status.message = T("还原失败，原版本仍在 ") + backup_path + T("，请手动改回 ")
                          + m_self_path;
     }
 }
@@ -276,7 +278,7 @@ void CUpdater::DoInstall()
     if (!ok && !from_mirror && m_source == SRC_AUTO && !m_cancel.load())
     {
         std::remove(temp_path.c_str());
-        SetStatus(ST_DOWNLOADING, "主源下载失败，改用备用源…");
+        SetStatus(ST_DOWNLOADING, T("主源下载失败，改用备用源…"));
 
         std::string mirror_error;
         if (QueryRelease(MP2_SWITCH_MIRROR_URL, true, mirror_error))
@@ -297,25 +299,25 @@ void CUpdater::DoInstall()
                 ok = m_http->DownloadToFile(mirror_url, {}, temp_path, mirror_verified,
                                             progress, retry_error);
                 if (!ok)
-                    error += "；备用源也失败：" + retry_error;
+                    error += T("；备用源也失败：") + retry_error;
             }
         }
         else
         {
-            error += "；备用源不可用：" + mirror_error;
+            error += T("；备用源不可用：") + mirror_error;
         }
     }
 
     if (!ok)
     {
         std::remove(temp_path.c_str());
-        SetStatus(ST_FAILED, "下载失败：" + error);
+        SetStatus(ST_FAILED, T("下载失败：") + error);
         return;
     }
     if (!LooksLikeNro(temp_path))
     {
         std::remove(temp_path.c_str());
-        SetStatus(ST_FAILED, "下载到的文件不是有效的 NRO，已丢弃");
+        SetStatus(ST_FAILED, T("下载到的文件不是有效的 NRO，已丢弃"));
         return;
     }
 
@@ -328,8 +330,8 @@ void CUpdater::DoInstall()
     if (expected_size > 0 && downloaded != expected_size)
     {
         std::remove(temp_path.c_str());
-        SetStatus(ST_FAILED, "下载的文件大小不对（" + std::to_string(downloaded) + " / 应为 "
-                             + std::to_string(expected_size) + " 字节），已放弃更新");
+        SetStatus(ST_FAILED, T("下载的文件大小不对（") + std::to_string(downloaded) + T(" / 应为 ")
+                             + std::to_string(expected_size) + T(" 字节），已放弃更新"));
         return;
     }
 
@@ -345,7 +347,7 @@ void CUpdater::DoInstall()
     // 文件仍然留在那里，手动改个名就能用。
     std::lock_guard<std::mutex> lock(m_mutex);
     m_status.state = ST_INSTALLED;
-    m_status.message = "已下载 " + m_status.latest_version + "，重启应用即可完成更新";
+    m_status.message = T("已下载 ") + m_status.latest_version + T("，重启应用即可完成更新");
 }
 
 std::string CUpdater::ApplyPendingUpdate()
@@ -362,7 +364,7 @@ std::string CUpdater::ApplyPendingUpdate()
     if (!LooksLikeNro(temp_path) || size < 1024 * 1024)
     {
         std::remove(temp_path.c_str());
-        return "更新文件不完整，已丢弃";
+        return T("更新文件不完整，已丢弃");
     }
 
     const std::string backup_path = m_self_path + ".bak";
@@ -371,15 +373,15 @@ std::string CUpdater::ApplyPendingUpdate()
     const bool had_old = FileUtil::Exists(m_self_path);
     if (had_old && !FileUtil::MoveOverwrite(m_self_path, backup_path))
     {
-        return "更新已就绪，但换不动正在使用的文件（errno=" + std::to_string(errno)
-             + "）。退出后把 " + temp_path + " 改名为 " + m_self_path + " 即可";
+        return T("更新已就绪，但换不动正在使用的文件（errno=") + std::to_string(errno)
+             + T("）。退出后把 ") + temp_path + T(" 改名为 ") + m_self_path + T(" 即可");
     }
 
     if (!FileUtil::MoveOverwrite(temp_path, m_self_path))
     {
         RestoreBackup(had_old, backup_path);
-        return "更新已就绪，但写不进去（errno=" + std::to_string(errno)
-             + "）。退出后把 " + temp_path + " 改名为 " + m_self_path + " 即可";
+        return T("更新已就绪，但写不进去（errno=") + std::to_string(errno)
+             + T("）。退出后把 ") + temp_path + T(" 改名为 ") + m_self_path + T(" 即可");
     }
 
     // 换上去之后核对大小。改名或复制都可能"成功返回"却只写了一半，
@@ -387,11 +389,11 @@ std::string CUpdater::ApplyPendingUpdate()
     if (FileUtil::GetFileSize(m_self_path) != size)
     {
         RestoreBackup(had_old, backup_path);
-        return "更新写入后校验不通过，已还原原有版本";
+        return T("更新写入后校验不通过，已还原原有版本");
     }
 
     std::remove(backup_path.c_str());
     // 必须提交，否则 SD 卡上留下的是个大小为 0 的坏 NRO，下次就再也启动不了了
     FileUtil::CommitDevice(m_self_path);
-    return "已应用新版本，重新启动后生效";
+    return T("已应用新版本，重新启动后生效");
 }

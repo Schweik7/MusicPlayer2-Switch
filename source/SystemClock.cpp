@@ -4,13 +4,14 @@
 
 #include <cstdio>
 #include <ctime>
+#include "core/Lang.h"
 
 namespace
 {
     bool g_inited = false;
 
     const char* const kWeekdayNames[7] = {
-        "周日", "周一", "周二", "周三", "周四", "周五", "周六"
+        T("周日"), T("周一"), T("周二"), T("周三"), T("周四"), T("周五"), T("周六")
     };
 }
 

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -49,7 +50,7 @@ void CBrowserScreen::GoBack(ScreenContext& ctx)
 
 const char* CBrowserScreen::GetButtonHints() const
 {
-    return "A 打开/播放|B 上级目录|X 播放整个目录|Y 设为音乐目录|− 播放列表|＋ 设置";
+    return T("A 打开/播放|B 上级目录|X 播放整个目录|Y 设为音乐目录|− 播放列表|＋ 设置");
 }
 
 void CBrowserScreen::Navigate(ScreenContext& ctx, const std::string& dir)
@@ -64,7 +65,7 @@ void CBrowserScreen::Navigate(ScreenContext& ctx, const std::string& dir)
     std::vector<FileUtil::DirEntry> entries;
     if (!FileUtil::ListDir(dir, entries))
     {
-        m_error = "无法打开目录: " + dir;
+        m_error = T("无法打开目录: ") + dir;
         return;
     }
     m_dir = dir;
@@ -144,14 +145,14 @@ void CBrowserScreen::SetAsMusicDir(ScreenContext& ctx)
     CMediaScanner::ScanDirectory(m_dir, songs, 3);
     if (songs.empty())
     {
-        ctx.ShowToast("已设为默认音乐目录（目录内没有可播放的音频）");
+        ctx.ShowToast(T("已设为默认音乐目录（目录内没有可播放的音频）"));
         return;
     }
 
     // 不自动播放：用户按 Y 的意图是"以后从这里找歌"，不是"马上放"
     player.SetPlaylist(std::move(songs), 0, false);
     char message[128];
-    std::snprintf(message, sizeof(message), "已设为默认音乐目录，载入 %d 首",
+    std::snprintf(message, sizeof(message), T("已设为默认音乐目录，载入 %d 首"),
                   player.GetPlaylistSize());
     ctx.ShowToast(message);
 }
@@ -163,7 +164,7 @@ void CBrowserScreen::PlayCurrentDirectory(ScreenContext& ctx, bool from_selectio
     CMediaScanner::ScanDirectory(m_dir, songs, 0);
     if (songs.empty())
     {
-        ctx.ShowToast("该目录下没有可播放的音频");
+        ctx.ShowToast(T("该目录下没有可播放的音频"));
         return;
     }
 
@@ -203,7 +204,7 @@ void CBrowserScreen::Activate(ScreenContext& ctx)
         if (ctx.player->LoadPlaylistFile(full_path, true))
             ctx.next_screen = SCREEN_PLAYER;
         else
-            ctx.ShowToast("无法读取该播放列表");
+            ctx.ShowToast(T("无法读取该播放列表"));
         return;
     }
     // 音频文件：把同目录的曲目一起放进播放列表，从选中的这首开始
@@ -335,8 +336,8 @@ void CBrowserScreen::Draw(ScreenContext& ctx)
         r.DrawText(text, rect.x + pad, rect.y + 5, CRenderer::FS_SMALL, Theme::kText);
         return rect;
     };
-    m_set_dir_button = draw_action("Y 设为音乐目录", list_x + list_w);
-    m_play_dir_button = draw_action("X 播放整个目录", m_set_dir_button.x - 8);
+    m_set_dir_button = draw_action(T("Y 设为音乐目录"), list_x + list_w);
+    m_play_dir_button = draw_action(T("X 播放整个目录"), m_set_dir_button.x - 8);
 
     // 当前路径
     r.DrawTextEllipsis(m_dir, list_x, path_y, m_play_dir_button.x - list_x - 12,
@@ -350,7 +351,7 @@ void CBrowserScreen::Draw(ScreenContext& ctx)
     }
     if (m_items.empty())
     {
-        r.DrawText("该目录下没有音频文件或子目录", Theme::kScreenWidth / 2, list_y + 100,
+        r.DrawText(T("该目录下没有音频文件或子目录"), Theme::kScreenWidth / 2, list_y + 100,
                    CRenderer::FS_NORMAL, Theme::kTextDim, CRenderer::ALIGN_CENTER);
         return;
     }

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -31,7 +32,7 @@ void CPlaylistScreen::OnEnter(ScreenContext& ctx)
 
 const char* CPlaylistScreen::GetButtonHints() const
 {
-    return "A 播放选中项|B 返回|L/R 翻页|＋ 设置";
+    return T("A 播放选中项|B 返回|L/R 翻页|＋ 设置");
 }
 
 bool CPlaylistScreen::UpdateTouchScroll(ScreenContext& ctx, int count, int visible,
@@ -90,7 +91,7 @@ void CPlaylistScreen::Update(ScreenContext& ctx, double delta_seconds)
         if (player.PlayIndex(m_selected))
             ctx.next_screen = SCREEN_PLAYER;
         else
-            ctx.ShowToast("无法播放该文件");
+            ctx.ShowToast(T("无法播放该文件"));
     }
 
     // 触摸拖动滚动（含松手惯性）
@@ -145,9 +146,9 @@ void CPlaylistScreen::Draw(ScreenContext& ctx)
 
     if (songs.empty())
     {
-        r.DrawText("播放列表为空", Theme::kScreenWidth / 2, list_y + 120, CRenderer::FS_LARGE,
+        r.DrawText(T("播放列表为空"), Theme::kScreenWidth / 2, list_y + 120, CRenderer::FS_LARGE,
                    Theme::kTextDim, CRenderer::ALIGN_CENTER);
-        r.DrawText("按 + 从 SD 卡添加音乐", Theme::kScreenWidth / 2, list_y + 170,
+        r.DrawText(T("按 + 从 SD 卡添加音乐"), Theme::kScreenWidth / 2, list_y + 170,
                    CRenderer::FS_NORMAL, Theme::kTextDisabled, CRenderer::ALIGN_CENTER);
         return;
     }

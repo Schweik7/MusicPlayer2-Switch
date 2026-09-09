@@ -1,6 +1,7 @@
 #include "PathMapper.h"
 #include "FileUtil.h"
 #include "StringUtil.h"
+#include "Lang.h"
 
 namespace
 {
@@ -63,9 +64,9 @@ bool CPathMapper::LoadFromFile(const std::string& ini_path)
 bool CPathMapper::SaveToFile(const std::string& ini_path) const
 {
     std::string content;
-    content += "# MusicPlayer2 for Switch - 路径映射\n";
-    content += "# 左边是桌面版播放列表里的 Windows 路径前缀，右边是 SD 卡上的对应目录。\n";
-    content += "# 例：D:\\Music\\ = sdmc:/music/\n\n";
+    content += T("# MusicPlayer2 for Switch - 路径映射\n");
+    content += T("# 左边是桌面版播放列表里的 Windows 路径前缀，右边是 SD 卡上的对应目录。\n");
+    content += T("# 例：D:\\Music\\ = sdmc:/music/\n\n");
     content += "default_music_dir = " + m_default_music_dir + "\n\n";
     for (const Rule& rule : m_rules)
         content += rule.from + " = " + rule.to + "\n";

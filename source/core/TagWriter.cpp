@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <vector>
+#include "Lang.h"
 
 namespace
 {
@@ -268,14 +269,14 @@ const char* TagWriter::ResultText(Result result)
 {
     switch (result)
     {
-    case RESULT_OK:             return "已写入文件";
-    case RESULT_UNSUPPORTED:    return "这种格式不支持嵌入";
-    case RESULT_READ_FAILED:    return "读不了原文件";
-    case RESULT_PARSE_FAILED:   return "标签结构不认识，未改动原文件";
-    case RESULT_WRITE_FAILED:   return "写临时文件失败，未改动原文件";
-    case RESULT_REPLACE_FAILED: return "替换原文件失败，原文件仍然完好";
+    case RESULT_OK:             return T("已写入文件");
+    case RESULT_UNSUPPORTED:    return T("这种格式不支持嵌入");
+    case RESULT_READ_FAILED:    return T("读不了原文件");
+    case RESULT_PARSE_FAILED:   return T("标签结构不认识，未改动原文件");
+    case RESULT_WRITE_FAILED:   return T("写临时文件失败，未改动原文件");
+    case RESULT_REPLACE_FAILED: return T("替换原文件失败，原文件仍然完好");
     }
-    return "未知错误";
+    return T("未知错误");
 }
 
 bool TagWriter::CanEmbed(const std::string& file_path)

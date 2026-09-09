@@ -1,5 +1,6 @@
 #include "SongInfo.h"
 #include "FileUtil.h"
+#include "Lang.h"
 
 std::string SongInfo::GetTitle() const
 {
@@ -7,17 +8,17 @@ std::string SongInfo::GetTitle() const
         return title;
     if (!file_path.empty())
         return FileUtil::GetFileNameWithoutExt(file_path);
-    return "未知曲目";
+    return T("未知曲目");
 }
 
 std::string SongInfo::GetArtist() const
 {
-    return artist.empty() ? std::string("未知艺术家") : artist;
+    return artist.empty() ? std::string(T("未知艺术家")) : artist;
 }
 
 std::string SongInfo::GetAlbum() const
 {
-    return album.empty() ? std::string("未知专辑") : album;
+    return album.empty() ? std::string(T("未知专辑")) : album;
 }
 
 std::string SongInfo::GetDisplayName() const

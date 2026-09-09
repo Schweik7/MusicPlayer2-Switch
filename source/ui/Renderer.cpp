@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -47,7 +48,7 @@ bool CRenderer::Init(const std::string& custom_font_path)
 {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
-        m_last_error = std::string("SDL_Init 失败: ") + SDL_GetError();
+        m_last_error = std::string(T("SDL_Init 失败: ")) + SDL_GetError();
         return false;
     }
 
@@ -57,14 +58,14 @@ bool CRenderer::Init(const std::string& custom_font_path)
                                 Theme::kScreenWidth, Theme::kScreenHeight, 0);
     if (m_window == nullptr)
     {
-        m_last_error = std::string("SDL_CreateWindow 失败: ") + SDL_GetError();
+        m_last_error = std::string(T("SDL_CreateWindow 失败: ")) + SDL_GetError();
         return false;
     }
 
     m_renderer = SDL_CreateRenderer(m_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (m_renderer == nullptr)
     {
-        m_last_error = std::string("SDL_CreateRenderer 失败: ") + SDL_GetError();
+        m_last_error = std::string(T("SDL_CreateRenderer 失败: ")) + SDL_GetError();
         return false;
     }
     SDL_RenderSetLogicalSize(m_renderer, Theme::kScreenWidth, Theme::kScreenHeight);
@@ -72,7 +73,7 @@ bool CRenderer::Init(const std::string& custom_font_path)
 
     if (TTF_Init() != 0)
     {
-        m_last_error = std::string("TTF_Init 失败: ") + TTF_GetError();
+        m_last_error = std::string(T("TTF_Init 失败: ")) + TTF_GetError();
         return false;
     }
     // 封面是可选功能，初始化失败不算致命错误
@@ -89,7 +90,7 @@ bool CRenderer::LoadFonts(const std::string& custom_font_path)
     Result rc = plInitialize(PlServiceType_User);
     if (R_FAILED(rc))
     {
-        m_last_error = "plInitialize 失败，无法取得系统共享字体";
+        m_last_error = T("plInitialize 失败，无法取得系统共享字体");
         return false;
     }
     m_pl_inited = true;
@@ -131,7 +132,7 @@ bool CRenderer::LoadFonts(const std::string& custom_font_path)
 
     if (m_shared_fonts.empty())
     {
-        m_last_error = "没有可用的系统字体";
+        m_last_error = T("没有可用的系统字体");
         return false;
     }
     return true;

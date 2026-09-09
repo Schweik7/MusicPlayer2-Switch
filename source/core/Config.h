@@ -101,6 +101,12 @@ public:
     void SetUpdateSource(UpdateSource value) { SetInt("update_source", value); }
 
     // 底栏的键位提示条是否隐藏。收起来之后歌词区能多用 64 像素。
+    // 界面语言。0=简体中文（默认），1=English。
+    // 存成整数而不是 "zh"/"en" 这类字符串：以后加语言只是往枚举尾部追加，
+    // 不用担心旧配置里存着一个已经改名的字符串。
+    int  GetLanguage() const { return GetInt("language", 0); }
+    void SetLanguage(int v) { SetInt("language", v); }
+
     // 浅色配色。默认深色：播放器多半在暗处用，而且封面在深底上更好看
     bool GetLightTheme() const { return GetBool("light_theme", false); }
     void SetLightTheme(bool b) { SetBool("light_theme", b); }

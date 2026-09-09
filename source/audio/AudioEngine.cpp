@@ -6,6 +6,7 @@
 #include <SDL2/SDL_mixer.h>
 
 #include <algorithm>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -33,14 +34,14 @@ bool CAudioEngine::Init()
 
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
     {
-        m_last_error = std::string("SDL_InitSubSystem(AUDIO) 失败: ") + SDL_GetError();
+        m_last_error = std::string(T("SDL_InitSubSystem(AUDIO) 失败: ")) + SDL_GetError();
         return false;
     }
 
     // Switch 的音频输出固定 48kHz 立体声；2048 帧的缓冲在掌机模式下也能稳定不断音
     if (Mix_OpenAudio(48000, AUDIO_S16SYS, 2, 2048) != 0)
     {
-        m_last_error = std::string("Mix_OpenAudio 失败: ") + Mix_GetError();
+        m_last_error = std::string(T("Mix_OpenAudio 失败: ")) + Mix_GetError();
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         return false;
     }
@@ -122,7 +123,7 @@ bool CAudioEngine::Open(const std::string& file_path)
 {
     if (!m_inited)
     {
-        m_last_error = "音频引擎尚未初始化";
+        m_last_error = T("音频引擎尚未初始化");
         return false;
     }
 
@@ -130,7 +131,7 @@ bool CAudioEngine::Open(const std::string& file_path)
 
     if (!FileUtil::Exists(file_path))
     {
-        m_last_error = "文件不存在: " + file_path;
+        m_last_error = T("文件不存在: ") + file_path;
         return false;
     }
 
@@ -168,7 +169,7 @@ bool CAudioEngine::OpenWithMixer(const std::string& file_path)
     m_music = Mix_LoadMUS(file_path.c_str());
     if (m_music == nullptr)
     {
-        m_last_error = std::string("无法解码: ") + Mix_GetError();
+        m_last_error = std::string(T("无法解码: ")) + Mix_GetError();
         return false;
     }
 
@@ -187,7 +188,7 @@ bool CAudioEngine::OpenWithMixer(const std::string& file_path)
 
     if (Mix_PlayMusic(m_music, 1) != 0)      // 循环由上层的播放模式决定，这里只播一遍
     {
-        m_last_error = std::string("Mix_PlayMusic 失败: ") + Mix_GetError();
+        m_last_error = std::string(T("Mix_PlayMusic 失败: ")) + Mix_GetError();
         Close();
         return false;
     }
@@ -363,7 +364,7 @@ bool CAudioEngine::SetPosition(int ms)
 
     if (Mix_SetMusicPosition(ms / 1000.0) != 0)
     {
-        m_last_error = std::string("该格式不支持定位: ") + Mix_GetError();
+        m_last_error = std::string(T("该格式不支持定位: ")) + Mix_GetError();
         if (was_paused)
             Mix_PauseMusic();
         return false;

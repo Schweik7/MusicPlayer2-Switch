@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -56,21 +57,21 @@ namespace
     std::string DimText(int seconds)
     {
         if (seconds <= 0)
-            return "关闭";
+            return T("关闭");
         if (seconds < 60)
-            return std::to_string(seconds) + " 秒";
+            return std::to_string(seconds) + T(" 秒");
         if (seconds % 60 == 0)
-            return std::to_string(seconds / 60) + " 分钟";
-        return std::to_string(seconds) + " 秒";
+            return std::to_string(seconds / 60) + T(" 分钟");
+        return std::to_string(seconds) + T(" 秒");
     }
 
     std::string UpdateSourceText(CConfig::UpdateSource source)
     {
         switch (source)
         {
-        case CConfig::US_GITHUB: return "仅 GitHub";
-        case CConfig::US_MIRROR: return "仅备用源（更快）";
-        default:                 return "自动（GitHub 优先）";
+        case CConfig::US_GITHUB: return T("仅 GitHub");
+        case CConfig::US_MIRROR: return T("仅备用源（更快）");
+        default:                 return T("自动（GitHub 优先）");
         }
     }
 
@@ -88,9 +89,9 @@ namespace
     {
         switch (mode)
         {
-        case CConfig::LB_COVER: return "当前曲目封面";
-        case CConfig::LB_FILE:  return "自定义图片";
-        default:                return "关闭";
+        case CConfig::LB_COVER: return T("当前曲目封面");
+        case CConfig::LB_FILE:  return T("自定义图片");
+        default:                return T("关闭");
         }
     }
 
@@ -115,8 +116,8 @@ void CSettingsScreen::OnEnter(ScreenContext& ctx)
 const char* CSettingsScreen::GetButtonHints() const
 {
     if (m_show_about)
-        return "B 返回设置";
-    return "A 修改/执行|B 返回|方向键 移动|左右 切换栏";
+        return T("B 返回设置");
+    return T("A 修改/执行|B 返回|方向键 移动|左右 切换栏");
 }
 
 void CSettingsScreen::GoBack(ScreenContext& ctx)
@@ -136,73 +137,79 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows.assign(ITEM_COUNT, Row());
 
     // 关掉触摸就是沉浸模式：屏上的按钮全收起来，封面放大。这两件事没必要拆成两个开关。
-    m_rows[ITEM_DIM].label = "空闲自动变暗";
+    // 语言这一项刻意不翻译值：显示的永远是各语言自己的名字，
+    // 万一切到看不懂的语言，也还认得出怎么切回来
+    m_rows[ITEM_LANGUAGE].label = T("语言");
+    m_rows[ITEM_LANGUAGE].value = Lang::GetLanguageName(Lang::GetLanguage());
+    m_rows[ITEM_LANGUAGE].actionable = true;
+
+    m_rows[ITEM_DIM].label = T("空闲自动变暗");
     m_rows[ITEM_DIM].value = DimText(config.GetDimTimeout());
     m_rows[ITEM_DIM].actionable = true;
 
-    m_rows[ITEM_THEME].label = "配色";
-    m_rows[ITEM_THEME].value = config.GetLightTheme() ? "浅色" : "深色";
+    m_rows[ITEM_THEME].label = T("配色");
+    m_rows[ITEM_THEME].value = config.GetLightTheme() ? T("浅色") : T("深色");
     m_rows[ITEM_THEME].actionable = true;
 
-    m_rows[ITEM_TRANSLATION].label = "显示歌词翻译";
-    m_rows[ITEM_TRANSLATION].value = config.GetShowTranslation() ? "开启" : "关闭";
+    m_rows[ITEM_TRANSLATION].label = T("显示歌词翻译");
+    m_rows[ITEM_TRANSLATION].value = config.GetShowTranslation() ? T("开启") : T("关闭");
     m_rows[ITEM_TRANSLATION].actionable = true;
 
-    m_rows[ITEM_LYRIC_SYNC].label = "拖歌词跟随进度";
-    m_rows[ITEM_LYRIC_SYNC].value = config.GetLyricSeekSync() ? "开启" : "关闭（仅翻看）";
+    m_rows[ITEM_LYRIC_SYNC].label = T("拖歌词跟随进度");
+    m_rows[ITEM_LYRIC_SYNC].value = config.GetLyricSeekSync() ? T("开启") : T("关闭（仅翻看）");
     m_rows[ITEM_LYRIC_SYNC].actionable = true;
 
-    m_rows[ITEM_LYRIC_OFFSET].label = "歌词时间偏移";
+    m_rows[ITEM_LYRIC_OFFSET].label = T("歌词时间偏移");
     if (!config.GetLyricOffsetEnabled())
     {
-        m_rows[ITEM_LYRIC_OFFSET].value = "关闭";
+        m_rows[ITEM_LYRIC_OFFSET].value = T("关闭");
     }
     else
     {
         char text[48];
-        std::snprintf(text, sizeof(text), "开启 · 按住 B + 方向键（%+.1f 秒）",
+        std::snprintf(text, sizeof(text), T("开启 · 按住 B + 方向键（%+.1f 秒）"),
                       config.GetLyricOffset() / 1000.0);
         m_rows[ITEM_LYRIC_OFFSET].value = text;
     }
     m_rows[ITEM_LYRIC_OFFSET].actionable = true;
 
-    m_rows[ITEM_LYRIC_BACKGROUND].label = "歌词区背景";
+    m_rows[ITEM_LYRIC_BACKGROUND].label = T("歌词区背景");
     m_rows[ITEM_LYRIC_BACKGROUND].value = BackgroundText(config.GetLyricBackground());
     m_rows[ITEM_LYRIC_BACKGROUND].actionable = true;
 
-    m_rows[ITEM_HIDE_HINTS].label = "隐藏底部键位提示";
-    m_rows[ITEM_HIDE_HINTS].value = config.GetHideHints() ? "隐藏" : "显示";
+    m_rows[ITEM_HIDE_HINTS].label = T("隐藏底部键位提示");
+    m_rows[ITEM_HIDE_HINTS].value = config.GetHideHints() ? T("隐藏") : T("显示");
     m_rows[ITEM_HIDE_HINTS].actionable = true;
 
-    m_rows[ITEM_EMBED].label = "下载歌词封面后嵌入歌曲文件";
-    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? "开启" : "关闭（存同级目录）";
+    m_rows[ITEM_EMBED].label = T("下载歌词封面后嵌入歌曲文件");
+    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? T("开启") : T("关闭（存同级目录）");
     m_rows[ITEM_EMBED].actionable = true;
 
-    m_rows[ITEM_BROWSE].label = "浏览 SD 卡";
-    m_rows[ITEM_BROWSE].value = "选择要播放的目录";
+    m_rows[ITEM_BROWSE].label = T("浏览 SD 卡");
+    m_rows[ITEM_BROWSE].value = T("选择要播放的目录");
     m_rows[ITEM_BROWSE].actionable = true;
 
-    m_rows[ITEM_MUSIC_DIR].label = "默认音乐目录";
+    m_rows[ITEM_MUSIC_DIR].label = T("默认音乐目录");
     m_rows[ITEM_MUSIC_DIR].value = config.GetMusicDir();
     m_rows[ITEM_MUSIC_DIR].actionable = false;
 
-    m_rows[ITEM_NETWORK].label = "网络";
+    m_rows[ITEM_NETWORK].label = T("网络");
     if (!player.IsNetworkReady())
-        m_rows[ITEM_NETWORK].value = "不可用";
+        m_rows[ITEM_NETWORK].value = T("不可用");
     else
-        m_rows[ITEM_NETWORK].value = player.IsCertVerified() ? "已连接 · 证书已验证"
-                                                             : "已连接 · 证书未验证";
+        m_rows[ITEM_NETWORK].value = player.IsCertVerified() ? T("已连接 · 证书已验证")
+                                                             : T("已连接 · 证书未验证");
     m_rows[ITEM_NETWORK].actionable = false;
 
-    m_rows[ITEM_UPDATE_SOURCE].label = "更新源";
+    m_rows[ITEM_UPDATE_SOURCE].label = T("更新源");
     m_rows[ITEM_UPDATE_SOURCE].value = UpdateSourceText(config.GetUpdateSource());
     m_rows[ITEM_UPDATE_SOURCE].actionable = true;
 
-    m_rows[ITEM_UPDATE].label = "检查更新";
-    m_rows[ITEM_UPDATE].value = "当前 " MP2_SWITCH_VERSION;
+    m_rows[ITEM_UPDATE].label = T("检查更新");
+    m_rows[ITEM_UPDATE].value = std::string(T("当前 ")) + MP2_SWITCH_VERSION;
     m_rows[ITEM_UPDATE].actionable = true;
 
-    m_rows[ITEM_ABOUT].label = "关于";
+    m_rows[ITEM_ABOUT].label = T("关于");
     m_rows[ITEM_ABOUT].actionable = true;
 }
 
@@ -228,7 +235,7 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         }
         config.SetDimTimeout(next);
         // 变更立刻生效：CApp 每帧都从这里读不现实，所以直接改上下文里的提示
-        ctx.ShowToast("自动变暗：" + DimText(next));
+        ctx.ShowToast(T("自动变暗：") + DimText(next));
         break;
     }
     case ITEM_TRANSLATION:
@@ -238,8 +245,8 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
     {
         const bool sync = !config.GetLyricSeekSync();
         config.SetLyricSeekSync(sync);
-        ctx.ShowToast(sync ? "拖动歌词将同时改变播放进度"
-                           : "拖动歌词只是翻看，松手后自动归位");
+        ctx.ShowToast(sync ? T("拖动歌词将同时改变播放进度")
+                           : T("拖动歌词只是翻看，松手后自动归位"));
         break;
     }
     case ITEM_LYRIC_OFFSET:
@@ -250,11 +257,11 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         {
             // 关掉就归零。留着一个改不了的偏移量在那儿生效，用户会莫名其妙。
             player.SetLyricOffset(0);
-            ctx.ShowToast("歌词时间偏移已关闭并归零");
+            ctx.ShowToast(T("歌词时间偏移已关闭并归零"));
         }
         else
         {
-            ctx.ShowToast("歌词时间偏移：播放界面按住 B + 方向键左右调整");
+            ctx.ShowToast(T("歌词时间偏移：播放界面按住 B + 方向键左右调整"));
         }
         break;
     }
@@ -269,14 +276,24 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
             const std::string path = FileUtil::Combine(CPlayer::GetDataDir(), "background.jpg");
             ctx.ShowToast(FileUtil::Exists(path) || FileUtil::Exists(
                               FileUtil::Combine(CPlayer::GetDataDir(), "background.png"))
-                              ? "歌词区背景：自定义图片"
-                              : "把 background.jpg 放进 " + CPlayer::GetDataDir());
+                              ? T("歌词区背景：自定义图片")
+                              : T("把 background.jpg 放进 ") + CPlayer::GetDataDir());
         }
         else
         {
-            ctx.ShowToast("歌词区背景：" + BackgroundText(
+            ctx.ShowToast(T("歌词区背景：") + BackgroundText(
                               static_cast<CConfig::LyricBackground>(next)));
         }
+        break;
+    }
+    case ITEM_LANGUAGE:
+    {
+        const int next = (Lang::GetLanguage() + 1) % Lang::LANG_COUNT;
+        Lang::SetLanguage(static_cast<Lang::Language>(next));
+        config.SetLanguage(next);
+        // 立刻生效：界面上的文字每帧都重新查表，下一帧就换过来了
+        ctx.ShowToast(T("已切换到 ") + std::string(Lang::GetLanguageName(
+                          static_cast<Lang::Language>(next))));
         break;
     }
     case ITEM_THEME:
@@ -285,29 +302,29 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
         config.SetLightTheme(light);
         // 立刻生效：颜色是一组全局变量，下一帧整个界面就换过来了
         Theme::SetMode(light ? Theme::MODE_LIGHT : Theme::MODE_DARK);
-        ctx.ShowToast(light ? "已切换到浅色配色" : "已切换到深色配色");
+        ctx.ShowToast(light ? T("已切换到浅色配色") : T("已切换到深色配色"));
         break;
     }
     case ITEM_HIDE_HINTS:
     {
         const bool hide = !config.GetHideHints();
         config.SetHideHints(hide);
-        ctx.ShowToast(hide ? "底部键位提示已隐藏，歌词区随之变高" : "底部键位提示已显示");
+        ctx.ShowToast(hide ? T("底部键位提示已隐藏，歌词区随之变高") : T("底部键位提示已显示"));
         break;
     }
     case ITEM_EMBED:
     {
         const bool embed = !config.GetEmbedDownloads();
         config.SetEmbedDownloads(embed);
-        ctx.ShowToast(embed ? "下载的歌词封面将写进 MP3 / FLAC 文件"
-                            : "下载的歌词封面存到歌曲的同级目录");
+        ctx.ShowToast(embed ? T("下载的歌词封面将写进 MP3 / FLAC 文件")
+                            : T("下载的歌词封面存到歌曲的同级目录"));
         break;
     }
     case ITEM_UPDATE_SOURCE:
     {
         int next = (config.GetUpdateSource() + 1) % CConfig::US_COUNT;
         config.SetUpdateSource(static_cast<CConfig::UpdateSource>(next));
-        ctx.ShowToast("更新源：" + UpdateSourceText(
+        ctx.ShowToast(T("更新源：") + UpdateSourceText(
                           static_cast<CConfig::UpdateSource>(next)));
         // 换了源，上一次的检查结果就不作数了
         if (m_updater != nullptr && !m_updater->IsBusy())
@@ -320,14 +337,14 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
             break;
         if (!player.IsNetworkReady())
         {
-            ctx.ShowToast("网络不可用");
+            ctx.ShowToast(T("网络不可用"));
             break;
         }
         CUpdater::Status status = m_updater->Poll();
         if (status.state == CUpdater::ST_UPDATE_AVAILABLE)
         {
             if (!m_updater->StartInstall())
-                ctx.ShowToast("更新正在进行中");
+                ctx.ShowToast(T("更新正在进行中"));
         }
         else if (!m_updater->IsBusy())
         {
@@ -436,21 +453,21 @@ void CSettingsScreen::DrawUpdateStatus(ScreenContext& ctx, int x, int y, int wid
         // 把"下载完还要重启"这件事说在按 A 之前。
         // 运行中途换不动正在使用的 NRO，所以更新是下载 + 重启两步，
         // 不提前讲清楚，用户会以为按完就装好了。
-        r.DrawText("按 A 下载 · 下载后需重启应用才能生效", x, y + 26,
+        r.DrawText(T("按 A 下载 · 下载后需重启应用才能生效"), x, y + 26,
                    CRenderer::FS_SMALL, Theme::kTextDim);
         if (!status.asset_verified)
         {
             // 明文 http 的下载地址验不了服务器身份，装的是一个来路无法确认的
             // 可执行文件。这话必须说在按 A 之前。
-            r.DrawText("来自备用源，无法验证服务器身份", x, y + 52,
+            r.DrawText(T("来自备用源，无法验证服务器身份"), x, y + 52,
                        CRenderer::FS_SMALL, Theme::kHighlight);
         }
     }
     else if (status.state == CUpdater::ST_INSTALLED && m_updater != nullptr)
     {
         // 万一重启后仍然换不动，这行给出可手动操作的下一步
-        r.DrawTextEllipsis("若重启后仍未生效，把 " + m_updater->GetPendingPath()
-                           + " 改名为 " + m_updater->GetSelfPath() + " 即可",
+        r.DrawTextEllipsis(T("若重启后仍未生效，把 ") + m_updater->GetPendingPath()
+                           + T(" 改名为 ") + m_updater->GetSelfPath() + T(" 即可"),
                            x, y + 26, width, CRenderer::FS_SMALL, Theme::kTextDisabled);
     }
 }
@@ -465,11 +482,11 @@ void CSettingsScreen::DrawAbout(ScreenContext& ctx)
 
     struct Line { const char* label; std::string value; };
     const Line lines[] = {
-        { "版本",     MP2_SWITCH_VERSION },
-        { "构建时间", std::string(__DATE__) + " " + __TIME__ },
-        { "项目地址", MP2_SWITCH_REPO_URL },
-        { "上游项目", "https://github.com/zhongyang219/MusicPlayer2" },
-        { "程序位置", m_updater != nullptr ? m_updater->GetSelfPath() : std::string("-") },
+        { T("版本"),     MP2_SWITCH_VERSION },
+        { T("构建时间"), std::string(__DATE__) + " " + __TIME__ },
+        { T("项目地址"), MP2_SWITCH_REPO_URL },
+        { T("上游项目"), "https://github.com/zhongyang219/MusicPlayer2" },
+        { T("程序位置"), m_updater != nullptr ? m_updater->GetSelfPath() : std::string("-") },
     };
 
     for (const Line& line : lines)
@@ -484,7 +501,7 @@ void CSettingsScreen::DrawAbout(ScreenContext& ctx)
     if (m_app != nullptr && !m_app->GetBootTimings().empty())
     {
         y += 12;
-        r.DrawText("启动耗时", kListX, y, CRenderer::FS_NORMAL, Theme::kTextDim);
+        r.DrawText(T("启动耗时"), kListX, y, CRenderer::FS_NORMAL, Theme::kTextDim);
         int bx = kListX + 180;
         for (const CApp::BootStageTime& stage : m_app->GetBootTimings())
         {
@@ -504,10 +521,10 @@ void CSettingsScreen::DrawAbout(ScreenContext& ctx)
     }
 
     y += 20;
-    r.DrawText("本移植版重写了界面与音频层：桌面版基于 MFC，无法交叉编译到 Switch。",
+    r.DrawText(T("本移植版重写了界面与音频层：桌面版基于 MFC，无法交叉编译到 Switch。"),
                kListX, y, CRenderer::FS_SMALL, Theme::kTextDisabled);
     y += 30;
-    r.DrawText("核心的播放列表、歌词解析、在线下载逻辑与桌面版保持一致。",
+    r.DrawText(T("核心的播放列表、歌词解析、在线下载逻辑与桌面版保持一致。"),
                kListX, y, CRenderer::FS_SMALL, Theme::kTextDisabled);
 }
 

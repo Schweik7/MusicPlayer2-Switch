@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -100,7 +101,7 @@ void CFlacDecoder::OnDecodeError()
     // 单帧解码错误不致命：libFLAC 会自己跳到下一个同步点继续，
     // 这里只记下来，不打断播放
     if (m_last_error.empty())
-        m_last_error = "FLAC 数据中存在损坏的帧，已跳过";
+        m_last_error = T("FLAC 数据中存在损坏的帧，已跳过");
 }
 
 void CFlacDecoder::OnWrite(const int32_t* const* buffer, int channels, int samples, int bps)
@@ -141,14 +142,14 @@ bool CFlacDecoder::Open(const std::string& path, int out_rate, int out_channels)
     m_last_error.clear();
     if (!FileUtil::Exists(path))
     {
-        m_last_error = "文件不存在: " + path;
+        m_last_error = T("文件不存在: ") + path;
         return false;
     }
 
     FLAC__StreamDecoder* decoder = FLAC__stream_decoder_new();
     if (decoder == nullptr)
     {
-        m_last_error = "FLAC__stream_decoder_new 失败";
+        m_last_error = T("FLAC__stream_decoder_new 失败");
         return false;
     }
     m_decoder = decoder;
@@ -160,7 +161,7 @@ bool CFlacDecoder::Open(const std::string& path, int out_rate, int out_channels)
         decoder, path.c_str(), &WriteCallback, &MetadataCallback, &ErrorCallback, this);
     if (status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
     {
-        m_last_error = std::string("无法打开 FLAC 文件: ")
+        m_last_error = std::string(T("无法打开 FLAC 文件: "))
                      + FLAC__StreamDecoderInitStatusString[status];
         FLAC__stream_decoder_delete(decoder);
         m_decoder = nullptr;
@@ -170,7 +171,7 @@ bool CFlacDecoder::Open(const std::string& path, int out_rate, int out_channels)
     // 先把元数据读完，拿到采样率/声道数/位深，才能建立转换流
     if (!FLAC__stream_decoder_process_until_end_of_metadata(decoder))
     {
-        m_last_error = "读取 FLAC 元数据失败";
+        m_last_error = T("读取 FLAC 元数据失败");
         FLAC__stream_decoder_finish(decoder);
         FLAC__stream_decoder_delete(decoder);
         m_decoder = nullptr;
@@ -179,7 +180,7 @@ bool CFlacDecoder::Open(const std::string& path, int out_rate, int out_channels)
 
     if (m_src_rate <= 0 || m_src_channels <= 0)
     {
-        m_last_error = "FLAC 文件缺少有效的 STREAMINFO";
+        m_last_error = T("FLAC 文件缺少有效的 STREAMINFO");
         FLAC__stream_decoder_finish(decoder);
         FLAC__stream_decoder_delete(decoder);
         m_decoder = nullptr;
@@ -199,7 +200,7 @@ bool CFlacDecoder::Open(const std::string& path, int out_rate, int out_channels)
                                   AUDIO_S16SYS, static_cast<uint8_t>(m_out_channels), m_out_rate);
     if (m_stream == nullptr)
     {
-        m_last_error = std::string("SDL_NewAudioStream 失败: ") + SDL_GetError();
+        m_last_error = std::string(T("SDL_NewAudioStream 失败: ")) + SDL_GetError();
         FLAC__stream_decoder_finish(Dec(m_decoder));
         FLAC__stream_decoder_delete(Dec(m_decoder));
         m_decoder = nullptr;
@@ -332,7 +333,7 @@ void CFlacDecoder::HandleSeek()
     {
         // 定位失败会让解码器进入 SEEK_ERROR 状态，必须 flush 才能继续用
         FLAC__stream_decoder_flush(Dec(m_decoder));
-        m_last_error = "FLAC 定位失败";
+        m_last_error = T("FLAC 定位失败");
     }
 
     m_seek_base_ms.store(target_ms);

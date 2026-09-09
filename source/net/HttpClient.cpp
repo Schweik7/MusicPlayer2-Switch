@@ -7,6 +7,7 @@
 #include <curl/curl.h>
 
 #include <cstdio>
+#include "../core/Lang.h"
 
 namespace
 {
@@ -47,14 +48,14 @@ namespace
         const int kPeerFailedVerification = 60;
         const int kCaCertBadFile = 77;
         if (curl_code == kCaCertBadFile)
-            return "（CA 证书包读不出来）";
+            return T("（CA 证书包读不出来）");
         if (curl_code != kPeerFailedVerification)
             return std::string();
         if (!SystemClock::IsClockImplausible())
             return std::string();
         SystemClock::DateTime now = SystemClock::Now();
-        return "（系统时间为 " + SystemClock::FormatFull(now)
-             + "，证书可能因此被判为过期，请先校准主机时间）";
+        return T("（系统时间为 ") + SystemClock::FormatFull(now)
+             + T("，证书可能因此被判为过期，请先校准主机时间）");
     }
 }
 
@@ -152,14 +153,14 @@ bool CCurlHttpClient::Perform(const std::string& url, const std::string* post_bo
 
     if (!m_inited)
     {
-        out.error = "网络未初始化";
+        out.error = T("网络未初始化");
         return false;
     }
 
     CURL* curl = curl_easy_init();
     if (curl == nullptr)
     {
-        out.error = "curl_easy_init 失败";
+        out.error = T("curl_easy_init 失败");
         return false;
     }
 
@@ -215,7 +216,7 @@ bool CCurlHttpClient::Perform(const std::string& url, const std::string* post_bo
     {
         if (ctx.overflowed)
         {
-            out.error = "响应内容过大";
+            out.error = T("响应内容过大");
         }
         else
         {
@@ -232,7 +233,7 @@ bool CCurlHttpClient::Perform(const std::string& url, const std::string* post_bo
     if (out.status_code < 200 || out.status_code >= 300)
     {
         char buff[64];
-        std::snprintf(buff, sizeof(buff), "服务器返回 HTTP %ld", out.status_code);
+        std::snprintf(buff, sizeof(buff), T("服务器返回 HTTP %ld"), out.status_code);
         out.error = buff;
         return false;
     }
@@ -291,20 +292,20 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
     error.clear();
     if (!m_inited)
     {
-        error = "网络未初始化";
+        error = T("网络未初始化");
         return false;
     }
     // 下载下来会被当程序执行的东西，绝不能在无法验证服务器身份的情况下取
     if (require_cert && !m_cert_verified)
     {
-        error = "缺少 CA 证书包，无法验证服务器身份";
+        error = T("缺少 CA 证书包，无法验证服务器身份");
         return false;
     }
 
     FILE* fp = std::fopen(dest_path.c_str(), "wb");
     if (fp == nullptr)
     {
-        error = "无法写入 " + dest_path;
+        error = T("无法写入 ") + dest_path;
         return false;
     }
 
@@ -313,7 +314,7 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
     {
         std::fclose(fp);
         std::remove(dest_path.c_str());
-        error = "curl_easy_init 失败";
+        error = T("curl_easy_init 失败");
         return false;
     }
 
@@ -369,9 +370,9 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
     if (!ok)
     {
         if (ctx.cancelled)
-            error = "已取消";
+            error = T("已取消");
         else if (ctx.write_failed || !close_ok)
-            error = "写入 SD 卡失败（卡满或写入出错）";
+            error = T("写入 SD 卡失败（卡满或写入出错）");
         else if (code != CURLE_OK)
         {
             char buff[32];
@@ -382,7 +383,7 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
         else
         {
             char buff[64];
-            std::snprintf(buff, sizeof(buff), "服务器返回 HTTP %ld", status);
+            std::snprintf(buff, sizeof(buff), T("服务器返回 HTTP %ld"), status);
             error = buff;
         }
         std::remove(dest_path.c_str());         // 别把半截文件留在卡上
@@ -393,7 +394,7 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
     if (ctx.total > 0 && ctx.written != ctx.total)
     {
         char buff[96];
-        std::snprintf(buff, sizeof(buff), "下载不完整（收到 %llu / %llu 字节）",
+        std::snprintf(buff, sizeof(buff), T("下载不完整（收到 %llu / %llu 字节）"),
                       static_cast<unsigned long long>(ctx.written),
                       static_cast<unsigned long long>(ctx.total));
         error = buff;
@@ -410,7 +411,7 @@ bool CCurlHttpClient::DownloadToFile(const std::string& url,
     if (on_disk != ctx.written)
     {
         char buff[112];
-        std::snprintf(buff, sizeof(buff), "写入 SD 卡不完整（卡上 %llu / 应有 %llu 字节）",
+        std::snprintf(buff, sizeof(buff), T("写入 SD 卡不完整（卡上 %llu / 应有 %llu 字节）"),
                       static_cast<unsigned long long>(on_disk),
                       static_cast<unsigned long long>(ctx.written));
         error = buff;

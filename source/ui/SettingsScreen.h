@@ -31,7 +31,8 @@ private:
         // 后者在歌词区工具排上有 1C/2C 按钮（另有 R）。
         // 两条路都齐了就不必在设置里再放一份——那只会把列表撑长，
         // 把底部的下载进度挤出可视区。
-        ITEM_DIM = 0,
+        ITEM_LANGUAGE = 0,
+        ITEM_DIM,
         ITEM_THEME,
         ITEM_TRANSLATION,
         ITEM_LYRIC_SYNC,
