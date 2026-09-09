@@ -3,6 +3,7 @@
 #include <switch.h>
 
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include "core/Lang.h"
 
@@ -42,18 +43,42 @@ DateTime Now()
     DateTime result;
 
     u64 timestamp = 0;
-    bool got = g_inited
-               && R_SUCCEEDED(timeGetCurrentTime(TimeType_LocalSystemClock, &timestamp));
-    if (!got)
+    if (g_inited && R_SUCCEEDED(timeGetCurrentTime(TimeType_UserSystemClock, &timestamp)))
     {
-        // 退路：系统时钟服务不可用时至少给出 UTC，总比不显示强
-        timestamp = static_cast<u64>(std::time(nullptr));
-        if (timestamp == 0)
+        // 取 UTC 时间戳，换算交给系统。
+        //
+        // 原来读的是 TimeType_LocalSystemClock 再用 gmtime 格式化，前提是
+        // "那个时钟已经是本地时间"——实机上不成立，它返回的是 UTC，
+        // 于是显示的时间整整差一个时区。timeToCalendarTimeWithMyRule
+        // 按主机设置的时区规则换算，夏令时也一并算好。
+        TimeCalendarTime cal{};
+        TimeCalendarAdditionalInfo info{};
+        if (R_SUCCEEDED(timeToCalendarTimeWithMyRule(timestamp, &cal, &info)))
+        {
+            result.year = cal.year;
+            result.month = cal.month;
+            result.day = cal.day;
+            result.hour = cal.hour;
+            result.minute = cal.minute;
+            result.second = cal.second;
+            result.weekday = static_cast<int>(info.wday);
+            result.utc_offset_seconds = info.offset;
+            // timezoneName 不保证有结尾的 NUL，按定长截断
+            result.timezone.assign(info.timezoneName,
+                                   strnlen(info.timezoneName, sizeof(info.timezoneName)));
+            result.valid = true;
             return result;
+        }
     }
 
+    // 退路：时区服务不可用时至少给出 UTC，总比不显示强。
+    // valid 留 false，顶栏据此把时间画成灰的——不准要让人看得出来。
+    if (timestamp == 0)
+        timestamp = static_cast<u64>(std::time(nullptr));
+    if (timestamp == 0)
+        return result;
+
     std::time_t raw = static_cast<std::time_t>(timestamp);
-    // timestamp 已经是本地时间，这里必须用 gmtime，用 localtime 会再叠加一次时区
     std::tm* tm_value = std::gmtime(&raw);
     if (tm_value == nullptr)
         return result;
@@ -65,7 +90,6 @@ DateTime Now()
     result.minute = tm_value->tm_min;
     result.second = tm_value->tm_sec;
     result.weekday = tm_value->tm_wday;
-    result.valid = got;
     return result;
 }
 

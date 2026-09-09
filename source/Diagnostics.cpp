@@ -407,6 +407,11 @@ void ProbeNetwork(CCurlHttpClient& http)
     Logf("  系统时间      : %s（读取%s）%s",
          SystemClock::FormatFull(now).c_str(), now.valid ? "成功" : "失败",
          SystemClock::IsClockImplausible() ? "  <== 与构建年份差距过大，很可能不准" : "");
+    // 时区单独一行：时间不对时，光看年月日时分分不清是时钟没校准
+    // 还是时区没套上——这两者的处理办法完全不同
+    Logf("  时区          : %s  UTC%+.2f 小时",
+         now.timezone.empty() ? "(未取到)" : now.timezone.c_str(),
+         now.utc_offset_seconds / 3600.0);
     Logf("  构建年份      : %d", SystemClock::GetBuildYear());
     Logf("  网络可用      : %s", CCurlHttpClient::IsNetworkAvailable() ? "是" : "否");
     Logf("  curl 已初始化 : %s", http.IsInited() ? "是" : "否");
