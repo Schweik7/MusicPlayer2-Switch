@@ -1,5 +1,6 @@
 #pragma once
 #include "Screen.h"
+#include "../core/Lang.h"
 
 #include <string>
 #include <vector>
@@ -20,7 +21,7 @@ public:
     void Update(ScreenContext& ctx, double delta_seconds) override;
     void Draw(ScreenContext& ctx) override;
 
-    const char* GetTitle() const override { return m_show_about ? "关于" : "设置"; }
+    const char* GetTitle() const override { return m_show_about ? T("关于") : T("设置"); }
     const char* GetButtonHints() const override;
     void GoBack(ScreenContext& ctx) override;
 

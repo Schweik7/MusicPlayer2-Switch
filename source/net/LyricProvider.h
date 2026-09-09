@@ -1,5 +1,6 @@
 #pragma once
 #include "SongMatcher.h"
+#include "../core/Lang.h"
 
 #include <string>
 #include <vector>
@@ -41,7 +42,7 @@ public:
 class CNeteaseProvider : public ILyricProvider
 {
 public:
-    const char* GetName() const override { return "网易云音乐"; }
+    const char* GetName() const override { return T("网易云音乐"); }
 
     std::string GetSearchUrl(const std::string& keywords, int result_count) const override;
     bool SearchUsesPost() const override { return true; }
@@ -59,7 +60,7 @@ public:
 class CQQMusicProvider : public ILyricProvider
 {
 public:
-    const char* GetName() const override { return "QQ音乐"; }
+    const char* GetName() const override { return T("QQ音乐"); }
 
     std::string GetSearchUrl(const std::string& keywords, int result_count) const override;
     void ParseSearchResult(const std::string& response, std::vector<DownloadItem>& out) const override;

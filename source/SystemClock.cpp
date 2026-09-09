@@ -10,8 +10,11 @@ namespace
 {
     bool g_inited = false;
 
+    // 这里存中文原文，翻译放到取值处。
+    // 这个数组是命名空间作用域的，初始化发生在 main 之前——那时
+    // Lang::SetLanguage 还没跑，在定义处调 T() 会把语言永久冻结在中文。
     const char* const kWeekdayNames[7] = {
-        T("周日"), T("周一"), T("周二"), T("周三"), T("周四"), T("周五"), T("周六")
+        "周日", "周一", "周二", "周三", "周四", "周五", "周六"
     };
 }
 
@@ -69,7 +72,8 @@ DateTime Now()
 std::string FormatDate(const DateTime& dt)
 {
     char buff[64];
-    const char* weekday = (dt.weekday >= 0 && dt.weekday < 7) ? kWeekdayNames[dt.weekday] : "";
+    const char* weekday = (dt.weekday >= 0 && dt.weekday < 7)
+                          ? T(kWeekdayNames[dt.weekday]) : "";
     std::snprintf(buff, sizeof(buff), "%02d/%02d %s", dt.month, dt.day, weekday);
     return buff;
 }

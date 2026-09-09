@@ -2,6 +2,7 @@
 #include "Screen.h"
 #include "Theme.h"
 #include "../core/LrcParser.h"
+#include "../core/Lang.h"
 
 #include <string>
 
@@ -28,7 +29,7 @@ public:
     void Update(ScreenContext& ctx, double delta_seconds) override;
     void Draw(ScreenContext& ctx) override;
 
-    const char* GetTitle() const override { return "正在播放"; }
+    const char* GetTitle() const override { return T("正在播放"); }
     const char* GetButtonHints() const override;
 
     // 播放界面是根，平时没有上一层；只有封面全屏时"返回"才有意义

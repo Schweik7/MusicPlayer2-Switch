@@ -2,6 +2,7 @@
 #include "Screen.h"
 #include "Theme.h"
 #include "../core/FileUtil.h"
+#include "../core/Lang.h"
 
 #include <string>
 #include <vector>
@@ -14,7 +15,7 @@ public:
     void Update(ScreenContext& ctx, double delta_seconds) override;
     void Draw(ScreenContext& ctx) override;
 
-    const char* GetTitle() const override { return "浏览 SD 卡"; }
+    const char* GetTitle() const override { return T("浏览 SD 卡"); }
     const char* GetButtonHints() const override;
     void GoBack(ScreenContext& ctx) override;
 

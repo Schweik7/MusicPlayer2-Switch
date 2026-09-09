@@ -1,5 +1,6 @@
 #pragma once
 #include "Screen.h"
+#include "../core/Lang.h"
 
 // 当前播放列表。对应桌面版的播放列表面板。
 class CPlaylistScreen : public CScreen
@@ -9,7 +10,7 @@ public:
     void Update(ScreenContext& ctx, double delta_seconds) override;
     void Draw(ScreenContext& ctx) override;
 
-    const char* GetTitle() const override { return "播放列表"; }
+    const char* GetTitle() const override { return T("播放列表"); }
     const char* GetButtonHints() const override;
 
 private:

@@ -133,6 +133,8 @@ namespace
 
         // —— 播放列表 / 浏览 ——
         { "列表", "Playlist" },
+        { "播放列表", "Playlist" },
+        { "在线下载", "Download" },
         { "播放列表为空", "The playlist is empty" },
         { "播放列表已有内容，丢弃后台扫描结果",
           "Playlist already has tracks; discarding the background scan" },

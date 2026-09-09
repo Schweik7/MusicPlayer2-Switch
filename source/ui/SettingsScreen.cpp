@@ -182,7 +182,9 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_HIDE_HINTS].actionable = true;
 
     m_rows[ITEM_EMBED].label = T("下载歌词封面后嵌入歌曲文件");
-    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? T("开启") : T("关闭（存同级目录）");
+    // 值只留是/否：这一项的标签本来就长，英文更长，
+    // 值再带一段解释就会和标签叠上。存到哪里在切换时的 toast 里说。
+    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? T("是") : T("否");
     m_rows[ITEM_EMBED].actionable = true;
 
     m_rows[ITEM_BROWSE].label = T("浏览 SD 卡");

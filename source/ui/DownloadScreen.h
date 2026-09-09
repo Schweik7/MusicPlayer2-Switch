@@ -2,6 +2,7 @@
 #include "Screen.h"
 #include "Theme.h"
 #include "../net/DownloadManager.h"
+#include "../core/Lang.h"
 
 #include <string>
 
@@ -17,7 +18,7 @@ public:
     void Update(ScreenContext& ctx, double delta_seconds) override;
     void Draw(ScreenContext& ctx) override;
 
-    const char* GetTitle() const override { return "在线下载"; }
+    const char* GetTitle() const override { return T("在线下载"); }
     const char* GetButtonHints() const override;
 
 private:
