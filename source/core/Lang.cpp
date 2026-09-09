@@ -184,7 +184,9 @@ namespace
         { "底部键位提示已隐藏，歌词区随之变高",
           "Button hints hidden; the lyric area grows to match" },
         { "下载歌词封面后嵌入歌曲文件", "Embed downloads into the audio file" },
-        { "关闭（存同级目录）", "Off (save alongside the track)" },
+        // 英文比中文宽得多，这一项的标签又长，值必须短到只剩一个词，
+        // 否则会和标签叠上。中文那边照常显示完整说明。
+        { "关闭（存同级目录）", "Off" },
         { "下载的歌词封面存到歌曲的同级目录",
           "Downloaded lyrics and covers are saved next to the track" },
         { "下载的歌词封面将写进 MP3 / FLAC 文件",

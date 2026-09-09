@@ -62,9 +62,18 @@ private:
     void DrawAbout(ScreenContext& ctx);
     void DrawUpdateStatus(ScreenContext& ctx, int x, int y, int width);
 
+    void EnsureSelectionVisible(int count);
+
     CUpdater* m_updater{};
     const CApp* m_app{};
     std::vector<Row> m_rows;
     int m_selected{};
     bool m_show_about{};
+
+    // 列表滚动。以行为单位（两栏共用同一个行窗口），
+    // 和播放列表、文件浏览用的是同一套 ListScroller。
+    int m_scroll{};
+    double m_scroll_smooth{};
+    bool m_dragging{};
+    double m_fling{};
 };

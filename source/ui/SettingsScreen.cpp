@@ -1,5 +1,6 @@
 #include "SettingsScreen.h"
 #include "Renderer.h"
+#include "ListScroller.h"
 #include "../Player.h"
 #include "../core/FileUtil.h"
 #include "../Version.h"
@@ -27,27 +28,53 @@ namespace
     const int kColumnGap = 32;
     const int kColumnW = (kListW - kColumnGap) / 2;
 
+    // 底部状态区固定留出这么高，列表只能用剩下的部分。
+    //
+    // 以前是反过来的：列表铺完剩多少算多少，于是每加一个设置项就把下载进度
+    // 往下挤一点，直到挤出屏幕。这个问题前后出现过三次，每次都靠"再删两个设置项"
+    // 缓解——根因是可用高度由项数决定，而不是项数去适应可用高度。
+    // 现在高度是定死的，项数再多也只是需要滚动。
+    const int kStatusHeight = 104;
+    const int kListBottom = Theme::kScreenHeight - Theme::kFooterHeight - kStatusHeight;
+
+    // 一屏能显示几行
+    int VisibleRows()
+    {
+        return std::max(1, (kListBottom - kListY) / kRowHeight);
+    }
+
     // 每栏放几行：按项数平分成两栏，而不是写死一个数。
-    // 写死的话每加一个设置项都得回来改，忘了就会多出第三栏跑到屏幕外面去。
+    // 注意这是"逻辑行数"，可能超过一屏，超出的部分靠滚动看到。
     int RowsPerColumn(int count)
     {
         return (count + 1) / 2;
     }
 
-    // 第 index 项所在的格子
-    Rect RowRect(int index, int count)
+    int MaxScroll(int count)
+    {
+        return std::max(0, RowsPerColumn(count) - VisibleRows());
+    }
+
+    // 第 index 项所在的格子。scroll 是以行为单位的滚动量。
+    Rect RowRect(int index, int count, int scroll)
     {
         const int per_column = RowsPerColumn(count);
         const int column = index / per_column;
-        const int row = index % per_column;
+        const int row = index % per_column - scroll;
         return Rect{ kListX + column * (kColumnW + kColumnGap), kListY + row * kRowHeight,
                      kColumnW, kRowHeight };
     }
 
-    // 状态信息区的顶端：跟在较长那一栏的下面
-    int StatusTop(int count)
+    bool RowVisible(const Rect& cell)
     {
-        return kListY + RowsPerColumn(count) * kRowHeight + 16;
+        return cell.y >= kListY && cell.y + kRowHeight <= kListBottom + 1;
+    }
+
+    // 状态信息区的顶端。现在是个常量——不再跟着项数走，
+    // 这正是"下载进度被挤掉"能彻底解决的原因。
+    int StatusTop()
+    {
+        return kListBottom + 16;
     }
 
     // 自动变暗的可选档位（秒）。0 表示关闭
@@ -108,6 +135,10 @@ namespace
 
 void CSettingsScreen::OnEnter(ScreenContext& ctx)
 {
+    m_scroll = 0;
+    m_scroll_smooth = 0.0;
+    m_dragging = false;
+    m_fling = 0.0;
     m_show_about = false;
     m_selected = 0;
     BuildRows(ctx);
@@ -182,9 +213,11 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_HIDE_HINTS].actionable = true;
 
     m_rows[ITEM_EMBED].label = T("下载歌词封面后嵌入歌曲文件");
-    // 值只留是/否：这一项的标签本来就长，英文更长，
-    // 值再带一段解释就会和标签叠上。存到哪里在切换时的 toast 里说。
-    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? T("是") : T("否");
+    // 中文这里保留"存同级目录"的说明——中文窄，放得下。
+    // 挤到标签的是英文：同一个键在译文表里给的是短短一个 Off，
+    // 靠译文而不是靠改中文原文来解决宽度问题。
+    m_rows[ITEM_EMBED].value = config.GetEmbedDownloads() ? T("开启")
+                                                         : T("关闭（存同级目录）");
     m_rows[ITEM_EMBED].actionable = true;
 
     m_rows[ITEM_BROWSE].label = T("浏览 SD 卡");
@@ -370,7 +403,6 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
 
 void CSettingsScreen::Update(ScreenContext& ctx, double delta_seconds)
 {
-    (void)delta_seconds;
     CInputMap& input = *ctx.input;
 
     if (input.IsDown(CInputMap::BTN_B))
@@ -404,13 +436,30 @@ void CSettingsScreen::Update(ScreenContext& ctx, double delta_seconds)
     if (input.IsDown(CInputMap::BTN_A) && m_rows[m_selected].actionable)
         Activate(ctx, m_selected);
 
-    // 触摸：点某一格
+    // 手指拖动滚动。和播放列表、文件浏览共用同一套惯性逻辑，
+    // 单位是行——两栏共享同一个行窗口，一起上下移动。
+    ListScroller::Params params;
+    params.list_top = kListY;
+    params.item_height = kRowHeight;
+    params.count = RowsPerColumn(count);
+    params.visible = VisibleRows();
+    const bool touch_scrolled = ListScroller::Update(input.GetTouch(), params, delta_seconds,
+                                                     m_scroll, m_scroll_smooth, m_dragging,
+                                                     m_fling);
+
+    // 本帧是手指在拖，就别再把列表拽回选中项那里
+    if (!touch_scrolled)
+        EnsureSelectionVisible(count);
+
+    // 触摸：点某一格。只认可视区里的格子，
+    // 否则滚上去看不见的那些行会在原来的位置上被误触
     const CInputMap::TouchState& touch = input.GetTouch();
     if (touch.released && !touch.IsDrag())
     {
         for (int i = 0; i < count; ++i)
         {
-            if (!RowRect(i, count).Contains(touch.x, touch.y))
+            const Rect cell = RowRect(i, count, m_scroll);
+            if (!RowVisible(cell) || !cell.Contains(touch.x, touch.y))
                 continue;
             m_selected = i;
             if (m_rows[i].actionable)
@@ -418,6 +467,22 @@ void CSettingsScreen::Update(ScreenContext& ctx, double delta_seconds)
             break;
         }
     }
+}
+
+void CSettingsScreen::EnsureSelectionVisible(int count)
+{
+    const int per_column = RowsPerColumn(count);
+    const int visible = VisibleRows();
+    const int row = m_selected % per_column;
+
+    if (row < m_scroll)
+        m_scroll = row;
+    else if (row >= m_scroll + visible)
+        m_scroll = row - visible + 1;
+
+    m_scroll = std::max(0, std::min(m_scroll, MaxScroll(count)));
+    m_scroll_smooth = m_scroll;
+    m_fling = 0.0;
 }
 
 void CSettingsScreen::DrawUpdateStatus(ScreenContext& ctx, int x, int y, int width)
@@ -540,10 +605,14 @@ void CSettingsScreen::Draw(ScreenContext& ctx)
 
     CRenderer& r = *ctx.renderer;
 
+    const int count = static_cast<int>(m_rows.size());
+
     for (size_t i = 0; i < m_rows.size(); ++i)
     {
         const Row& row = m_rows[i];
-        const Rect cell = RowRect(static_cast<int>(i), static_cast<int>(m_rows.size()));
+        const Rect cell = RowRect(static_cast<int>(i), count, m_scroll);
+        if (!RowVisible(cell))
+            continue;                   // 滚出可视区的行不画，也不参与命中判定
         const bool selected = (static_cast<int>(i) == m_selected);
 
         if (selected)
@@ -560,6 +629,22 @@ void CSettingsScreen::Draw(ScreenContext& ctx)
         }
     }
 
-    // 更新状态显示在列表下方。两栏之后这里终于有地方了。
-    DrawUpdateStatus(ctx, kListX + 16, StatusTop(static_cast<int>(m_rows.size())), kListW - 32);
+    // 滚动条：有东西在屏幕外时才画，否则不打扰
+    const int total_rows = RowsPerColumn(count);
+    const int visible = VisibleRows();
+    if (total_rows > visible)
+    {
+        const int track_h = visible * kRowHeight;
+        const int track_x = kListX + kListW + 6;
+        r.FillRoundRect(track_x, kListY, 4, track_h, 2, Theme::kPanelAlt);
+
+        const int thumb_h = std::max(24, track_h * visible / total_rows);
+        const int span = track_h - thumb_h;
+        const int max_scroll = MaxScroll(count);
+        const int thumb_y = kListY + (max_scroll > 0 ? span * m_scroll / max_scroll : 0);
+        r.FillRoundRect(track_x, thumb_y, 4, thumb_h, 2, Theme::kAccent);
+    }
+
+    // 更新状态显示在列表下方。这块高度现在是固定的，不会再被设置项挤掉。
+    DrawUpdateStatus(ctx, kListX + 16, StatusTop(), kListW - 32);
 }

@@ -40,7 +40,9 @@ bool CApp::Init()
     m_boot_start_ticks = SDL_GetTicks();
     m_boot_last_ticks = m_boot_start_ticks;
 
-    // 应用待装的更新——必须赶在 romfsInit() 之前。
+    // 兜底：正常情况下更新在上次退出时就换好了（见 Uninit），
+    // 这里只处理"上次没走到退出"的情形——崩溃、被强杀、或者退出时改名失败。
+    // 仍然必须赶在 romfsInit() 之前。
     //
     // romfs 是从正在运行的这个 NRO 文件里挂载的，挂着的时候整个文件被 FS 层持有：
     // 删不掉、改不了名、也打不开写。之前"更新已就绪但写不进去"就是这么来的，
@@ -630,4 +632,15 @@ void CApp::Uninit()
     SystemPower::Uninit();
     SystemClock::Uninit();
     romfsExit();
+
+    // 更新的替换放在退出时，而不是下次启动时。
+    //
+    // 放在启动时是没用的：NRO 在我们的代码跑起来之前就已经被整个读进内存了，
+    // 那一趟启动跑的仍然是旧版本，只是顺手把磁盘上的文件换了。于是用户看到的是
+    // "下载 → 重启 → 怎么还说有新版本 → 再重启" —— 要重启两次才生效。
+    // 退出时换掉，下一次启动读到的就已经是新的，只需重启一次。
+    //
+    // 必须排在 romfsExit() 之后：romfs 挂的就是这个 NRO 文件本身，
+    // 挂着的时候它删不掉也改不了名。
+    m_updater.ApplyPendingUpdate();
 }
