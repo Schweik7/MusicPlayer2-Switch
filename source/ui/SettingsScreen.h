@@ -29,6 +29,7 @@ private:
     {
         ITEM_TOUCH = 0,
         ITEM_DIM,
+        ITEM_THEME,
         ITEM_TRANSLATION,
         ITEM_LYRIC_LAYOUT,
         ITEM_LYRIC_SYNC,

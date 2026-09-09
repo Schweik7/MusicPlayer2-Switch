@@ -1,6 +1,7 @@
 #include "App.h"
 #include "Diagnostics.h"
 #include "SystemClock.h"
+#include "SystemPower.h"
 #include "core/FileUtil.h"
 #include "core/MediaScanner.h"
 #include "ui/Theme.h"
@@ -50,6 +51,7 @@ bool CApp::Init()
     // romfs 用来放 CA 证书等资源；没有 romfs 也能跑，所以失败不算致命
     romfsInit();
     SystemClock::Init();
+    SystemPower::Init();
     BootStage("romfs");
 
     // 用户可以往数据目录里放一个 font.ttf 换掉界面字体（系统字体仍作兜底）。
@@ -77,6 +79,9 @@ bool CApp::Init()
     Diag::ProbeNetwork(m_player.GetHttpClient());
 
     m_input.Init();
+    // 配色要在第一帧之前定下来，否则会闪一下深色再变浅色
+    Theme::SetMode(m_player.GetConfig().GetLightTheme() ? Theme::MODE_LIGHT
+                                                       : Theme::MODE_DARK);
     m_input.SetTouchEnabled(m_player.GetConfig().GetTouchEnabled());
 
     m_dimmer.Init();
@@ -212,6 +217,57 @@ namespace
         renderer.DrawText(text, rect.x + pad, rect.y + 4, CRenderer::FS_SMALL, foreground);
         return rect;
     }
+
+    // 电量图标：右边缘对齐到 right，返回它连同数字一共占了多宽。
+    // 让调用方拿到宽度，是为了把时钟顶到它左边而不用在两处各写一遍尺寸。
+    int DrawBattery(CRenderer& renderer, int right, int y, const SystemPower::BatteryState& bat)
+    {
+        const int body_w = 30;
+        const int body_h = 16;
+        const int nub_w = 3;
+        const int nub_h = 6;
+        const int icon_w = body_w + nub_w;
+
+        // 数字不带百分号：图标本身已经说明了这是电量，
+        // 和音量那个扬声器符号的处理保持一致
+        char text[8] = "--";
+        if (bat.valid)
+            std::snprintf(text, sizeof(text), "%d", bat.percent);
+
+        int text_w = 0, text_h = 0;
+        renderer.MeasureText(text, CRenderer::FS_SMALL, text_w, text_h);
+
+        const int total_w = icon_w + 6 + text_w;
+        const int icon_x = right - total_w;
+
+        Color color = Theme::kTextDim;
+        if (bat.valid)
+        {
+            if (bat.charging)
+                color = Theme::kBatteryCharging;
+            else if (bat.percent <= 20)
+                color = Theme::kBatteryLow;
+            else
+                color = Theme::kText;
+        }
+
+        // 描边的画法是“填大的再用背景色挖空”，所以要把顶栏底色传进去。
+        // 电量条随后再填在挖空出来的内腔上。
+        renderer.DrawRoundRect(icon_x, y, body_w, body_h, 3, 2, color, Theme::kPanel);
+        renderer.FillRect(icon_x + body_w + 1, y + (body_h - nub_h) / 2, nub_w, nub_h, color);
+
+        if (bat.valid && bat.percent > 0)
+        {
+            const int inner_max = body_w - 8;
+            int inner = inner_max * bat.percent / 100;
+            if (inner < 2)
+                inner = 2;              // 剩个位数也要留一条看得见的
+            renderer.FillRect(icon_x + 4, y + 4, inner, body_h - 8, color);
+        }
+
+        renderer.DrawText(text, right, y - 1, CRenderer::FS_SMALL, color, CRenderer::ALIGN_RIGHT);
+        return total_w;
+    }
 }
 
 void CApp::ClearHeaderButtons()
@@ -255,6 +311,14 @@ void CApp::DrawHeader()
     m_playlist_button = DrawChip(m_renderer, "列表", left_cursor, 26, Theme::kPanelAlt,
                                  Theme::kText);
 
+    // 触摸开关和设置、列表排在一起：它们是同一类东西（常驻的、点一下就生效的入口），
+    // 原来单独摆在右上角，既和右边的时钟抢位置，也让人以为它是状态显示而不是按钮。
+    const bool touch_on = m_input.IsTouchEnabled();
+    left_cursor = m_playlist_button.x + m_playlist_button.w + 8;
+    m_touch_button = DrawChip(m_renderer, touch_on ? "触摸 开" : "触摸 关", left_cursor, 26,
+                              touch_on ? Theme::kPanelAlt : Theme::kAccentDim,
+                              touch_on ? Theme::kText : Theme::kTextDim);
+
     // 第几首 / 共几首。放顶栏而不是播放界面里：它在哪个界面都有意义，
     // 而且沉浸模式下播放界面上的东西是要收起来的。
     const int total = m_player.GetPlaylistSize();
@@ -263,7 +327,7 @@ void CApp::DrawHeader()
         char fraction[32];
         std::snprintf(fraction, sizeof(fraction), "%d / %d",
                       m_player.GetCurrentIndex() + 1, total);
-        m_renderer.DrawText(fraction, m_playlist_button.x + m_playlist_button.w + 14, 30,
+        m_renderer.DrawText(fraction, m_touch_button.x + m_touch_button.w + 14, 30,
                             CRenderer::FS_SMALL, Theme::kAccent);
     }
 
@@ -280,27 +344,16 @@ void CApp::DrawHeader()
                             CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
     }
 
-    // 右上角一行：触摸开关 + 日期时间。
-    //
-    // 原来是两行（上面时间、下面几个按钮），播放模式按钮挪到歌词区的工具排之后
-    // 下面那行只剩一个开关，两行显得空。并成一行，顶栏也清爽。
+    // 右上角一行：日期时间 + 电量。
+    // 电量摆在最右，和 Switch 系统界面里的位置一致，用户不用重新找。
     const int right_x = Theme::kScreenWidth - Theme::kPadding;
+
+    const int battery_w = DrawBattery(m_renderer, right_x, 27, SystemPower::Get());
 
     SystemClock::DateTime now = SystemClock::Now();
     std::string clock_text = SystemClock::FormatDate(now) + "  " + SystemClock::FormatTime(now);
-    int clock_w = 0, clock_h = 0;
-    m_renderer.MeasureText(clock_text, CRenderer::FS_SMALL, clock_w, clock_h);
-    m_renderer.DrawText(clock_text, right_x, 26, CRenderer::FS_SMALL,
+    m_renderer.DrawText(clock_text, right_x - battery_w - 16, 26, CRenderer::FS_SMALL,
                         now.valid ? Theme::kText : Theme::kTextDisabled, CRenderer::ALIGN_RIGHT);
-
-    const bool touch_on = m_input.IsTouchEnabled();
-    const std::string touch_text = touch_on ? "触摸 开" : "触摸 关";
-    int touch_w = 0, touch_h = 0;
-    m_renderer.MeasureText(touch_text, CRenderer::FS_SMALL, touch_w, touch_h);
-    m_touch_button = DrawChip(m_renderer, touch_text,
-                              right_x - clock_w - 16 - (touch_w + 20), 22,
-                              touch_on ? Theme::kPanelAlt : Theme::kAccentDim,
-                              touch_on ? Theme::kText : Theme::kTextDim);
 }
 
 void CApp::ToggleTouchEnabled()
@@ -537,6 +590,7 @@ void CApp::Uninit()
     m_dimmer.Uninit();
     m_player.Uninit();
     m_renderer.Uninit();
+    SystemPower::Uninit();
     SystemClock::Uninit();
     romfsExit();
 }

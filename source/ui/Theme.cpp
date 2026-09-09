@@ -1,0 +1,113 @@
+#include "Theme.h"
+
+namespace Theme
+{
+
+// 深色（默认）
+Color kBackground{ 0x1F, 0x1F, 0x27 };
+Color kPanel{ 0x2A, 0x2A, 0x35 };
+Color kPanelAlt{ 0x33, 0x33, 0x40 };
+Color kSeparator{ 0x44, 0x44, 0x52 };
+
+Color kText{ 0xF0, 0xF0, 0xF5 };
+Color kTextDim{ 0x9A, 0x9A, 0xAA };
+Color kTextDisabled{ 0x66, 0x66, 0x75 };
+
+Color kAccent{ 0x3D, 0x9B, 0xE9 };
+Color kAccentDim{ 0x2A, 0x6C, 0xA3 };
+Color kSelection{ 0x3D, 0x9B, 0xE9, 0x55 };
+Color kHighlight{ 0xFF, 0xC1, 0x07 };
+
+Color kSpectrumLow{ 0x3D, 0x9B, 0xE9 };
+Color kSpectrumHigh{ 0xE9, 0x3D, 0x9B };
+
+Color kLyricCurrent{ 0xFF, 0xFF, 0xFF };
+Color kLyricOther{ 0x88, 0x88, 0x99 };
+Color kLyricKaraoke{ 0x3D, 0x9B, 0xE9 };
+Color kLyricTranslate{ 0xB0, 0xB0, 0xC0 };
+
+Color kBatteryLow{ 0xE9, 0x5D, 0x50 };
+Color kBatteryCharging{ 0x62, 0xC4, 0x70 };
+
+namespace
+{
+    Mode g_mode = MODE_DARK;
+
+    // 一整套配色打包成一个结构体，切换时整体覆盖。
+    // 分散成 20 多个 if 很容易漏掉一个，那种漏法只在某个界面上才看得出来。
+    struct Palette
+    {
+        Color background, panel, panel_alt, separator;
+        Color text, text_dim, text_disabled;
+        Color accent, accent_dim, selection, highlight;
+        Color spectrum_low, spectrum_high;
+        Color lyric_current, lyric_other, lyric_karaoke, lyric_translate;
+        Color battery_low, battery_charging;
+    };
+
+    constexpr Palette kDarkPalette{
+        { 0x1F, 0x1F, 0x27 }, { 0x2A, 0x2A, 0x35 }, { 0x33, 0x33, 0x40 }, { 0x44, 0x44, 0x52 },
+        { 0xF0, 0xF0, 0xF5 }, { 0x9A, 0x9A, 0xAA }, { 0x66, 0x66, 0x75 },
+        { 0x3D, 0x9B, 0xE9 }, { 0x2A, 0x6C, 0xA3 }, { 0x3D, 0x9B, 0xE9, 0x55 },
+        { 0xFF, 0xC1, 0x07 },
+        { 0x3D, 0x9B, 0xE9 }, { 0xE9, 0x3D, 0x9B },
+        { 0xFF, 0xFF, 0xFF }, { 0x88, 0x88, 0x99 }, { 0x3D, 0x9B, 0xE9 }, { 0xB0, 0xB0, 0xC0 },
+        { 0xE9, 0x5D, 0x50 }, { 0x62, 0xC4, 0x70 },
+    };
+
+    // 浅色不是把深色取反：
+    //   - 强调蓝要压深，浅底上的亮蓝几乎看不清
+    //   - kAccentDim 在深色下是"比强调色更深"，浅色下必须反过来变成淡蓝底，
+    //     因为它的用途是给按下/选中的按钮当背景，上面压的是深色文字
+    //   - kHighlight 的琥珀色在白底上要压到棕橙，否则和背景糊在一起
+    constexpr Palette kLightPalette{
+        { 0xF2, 0xF3, 0xF7 }, { 0xFF, 0xFF, 0xFF }, { 0xE4, 0xE6, 0xEF }, { 0xCF, 0xD2, 0xDE },
+        { 0x1C, 0x1D, 0x26 }, { 0x5A, 0x5C, 0x6A }, { 0x9B, 0xA0, 0xB0 },
+        { 0x1A, 0x6F, 0xC4 }, { 0xC8, 0xDF, 0xF6 }, { 0x1A, 0x6F, 0xC4, 0x3A },
+        { 0xB2, 0x6A, 0x00 },
+        { 0x1A, 0x6F, 0xC4 }, { 0xC4, 0x1A, 0x6F },
+        { 0x12, 0x13, 0x1A }, { 0x8A, 0x8D, 0x9C }, { 0x1A, 0x6F, 0xC4 }, { 0x5A, 0x5C, 0x6A },
+        { 0xC0, 0x39, 0x2B }, { 0x2E, 0x8B, 0x45 },
+    };
+
+    void Apply(const Palette& p)
+    {
+        kBackground = p.background;
+        kPanel = p.panel;
+        kPanelAlt = p.panel_alt;
+        kSeparator = p.separator;
+
+        kText = p.text;
+        kTextDim = p.text_dim;
+        kTextDisabled = p.text_disabled;
+
+        kAccent = p.accent;
+        kAccentDim = p.accent_dim;
+        kSelection = p.selection;
+        kHighlight = p.highlight;
+
+        kSpectrumLow = p.spectrum_low;
+        kSpectrumHigh = p.spectrum_high;
+
+        kLyricCurrent = p.lyric_current;
+        kLyricOther = p.lyric_other;
+        kLyricKaraoke = p.lyric_karaoke;
+        kLyricTranslate = p.lyric_translate;
+
+        kBatteryLow = p.battery_low;
+        kBatteryCharging = p.battery_charging;
+    }
+}
+
+void SetMode(Mode mode)
+{
+    g_mode = mode;
+    Apply(mode == MODE_LIGHT ? kLightPalette : kDarkPalette);
+}
+
+Mode GetMode()
+{
+    return g_mode;
+}
+
+}   // namespace Theme

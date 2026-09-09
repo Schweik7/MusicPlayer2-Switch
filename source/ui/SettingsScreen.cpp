@@ -144,6 +144,10 @@ void CSettingsScreen::BuildRows(ScreenContext& ctx)
     m_rows[ITEM_DIM].value = DimText(config.GetDimTimeout());
     m_rows[ITEM_DIM].actionable = true;
 
+    m_rows[ITEM_THEME].label = "配色";
+    m_rows[ITEM_THEME].value = config.GetLightTheme() ? "浅色" : "深色";
+    m_rows[ITEM_THEME].actionable = true;
+
     m_rows[ITEM_TRANSLATION].label = "显示歌词翻译";
     m_rows[ITEM_TRANSLATION].value = config.GetShowTranslation() ? "开启" : "关闭";
     m_rows[ITEM_TRANSLATION].actionable = true;
@@ -298,6 +302,15 @@ void CSettingsScreen::Activate(ScreenContext& ctx, int index)
             ctx.ShowToast("歌词区背景：" + BackgroundText(
                               static_cast<CConfig::LyricBackground>(next)));
         }
+        break;
+    }
+    case ITEM_THEME:
+    {
+        const bool light = !config.GetLightTheme();
+        config.SetLightTheme(light);
+        // 立刻生效：颜色是一组全局变量，下一帧整个界面就换过来了
+        Theme::SetMode(light ? Theme::MODE_LIGHT : Theme::MODE_DARK);
+        ctx.ShowToast(light ? "已切换到浅色配色" : "已切换到深色配色");
         break;
     }
     case ITEM_HIDE_HINTS:

@@ -1,7 +1,8 @@
 #pragma once
 #include <cstdint>
 
-// 配色。基调参考 Switch 系统 UI 的深色主题，强调色沿用 MusicPlayer2 的蓝色。
+// 配色。深色基调参考 Switch 系统 UI，强调色沿用 MusicPlayer2 的蓝色；
+// 另有一套浅色配色，可在设置里切换。
 struct Color
 {
     uint8_t r{}, g{}, b{}, a{ 255 };
@@ -27,34 +28,56 @@ struct Rect
 
 namespace Theme
 {
+    enum Mode
+    {
+        MODE_DARK = 0,
+        MODE_LIGHT = 1
+    };
+
+    // 切换配色。全局改一次，所有界面下一帧就跟着变——
+    // 各处引用的是下面这些变量本身，不需要逐个界面通知。
+    void SetMode(Mode mode);
+    Mode GetMode();
+
+    // 这些颜色刻意不是 constexpr：要能在运行时整体换一套。
+    // 名字和取值方式保持不变，所以 300 多处引用一处都不用改。
+    //
+    // 代价是它们不能再用在常量表达式里。目前没有这样的用法，
+    // 真要加的时候编译期就会报出来，不会悄悄出错。
+
     // 背景
-    constexpr Color kBackground{ 0x1F, 0x1F, 0x27 };
-    constexpr Color kPanel{ 0x2A, 0x2A, 0x35 };
-    constexpr Color kPanelAlt{ 0x33, 0x33, 0x40 };
-    constexpr Color kSeparator{ 0x44, 0x44, 0x52 };
+    extern Color kBackground;
+    extern Color kPanel;
+    extern Color kPanelAlt;
+    extern Color kSeparator;
 
     // 前景
-    constexpr Color kText{ 0xF0, 0xF0, 0xF5 };
-    constexpr Color kTextDim{ 0x9A, 0x9A, 0xAA };
-    constexpr Color kTextDisabled{ 0x66, 0x66, 0x75 };
+    extern Color kText;
+    extern Color kTextDim;
+    extern Color kTextDisabled;
 
     // 强调色
-    constexpr Color kAccent{ 0x3D, 0x9B, 0xE9 };
-    constexpr Color kAccentDim{ 0x2A, 0x6C, 0xA3 };
-    constexpr Color kSelection{ 0x3D, 0x9B, 0xE9, 0x55 };
-    constexpr Color kHighlight{ 0xFF, 0xC1, 0x07 };
+    extern Color kAccent;
+    extern Color kAccentDim;
+    extern Color kSelection;
+    extern Color kHighlight;
 
     // 频谱渐变的两端
-    constexpr Color kSpectrumLow{ 0x3D, 0x9B, 0xE9 };
-    constexpr Color kSpectrumHigh{ 0xE9, 0x3D, 0x9B };
+    extern Color kSpectrumLow;
+    extern Color kSpectrumHigh;
 
     // 歌词
-    constexpr Color kLyricCurrent{ 0xFF, 0xFF, 0xFF };
-    constexpr Color kLyricOther{ 0x88, 0x88, 0x99 };
-    constexpr Color kLyricKaraoke{ 0x3D, 0x9B, 0xE9 };
-    constexpr Color kLyricTranslate{ 0xB0, 0xB0, 0xC0 };
+    extern Color kLyricCurrent;
+    extern Color kLyricOther;
+    extern Color kLyricKaraoke;
+    extern Color kLyricTranslate;
 
-    // 布局：逻辑分辨率固定 1280x720，掌机与底座模式共用一套坐标
+    // 电量图标
+    extern Color kBatteryLow;
+    extern Color kBatteryCharging;
+
+    // 布局：逻辑分辨率固定 1280x720，掌机与底座模式共用一套坐标。
+    // 这些仍然是编译期常量，换配色不影响排版。
     constexpr int kScreenWidth = 1280;
     constexpr int kScreenHeight = 720;
     constexpr int kHeaderHeight = 72;

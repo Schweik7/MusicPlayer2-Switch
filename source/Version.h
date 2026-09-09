@@ -2,7 +2,7 @@
 
 // 版本号与 GitHub Release 的 tag 对应：更新检查就是拿 tag_name 和它比。
 // 发版时这里和 tag 必须一起改。
-#define MP2_SWITCH_VERSION "0.8.0"
+#define MP2_SWITCH_VERSION "0.8.1"
 
 // 移植版从 Schweik7/MusicPlayer2（上游的 fork）搬到了自己的仓库。
 //
