@@ -208,14 +208,16 @@ void CApp::SwitchScreen(ScreenId id)
 
 namespace
 {
-    // 顶栏上一个小按钮：画出来并把矩形交回去，绘制和命中判定共用同一份坐标
-    Rect DrawChip(CRenderer& renderer, const std::string& text, int x, int y, Color background,
-                  Color foreground)
+    // 顶栏上一个小按钮：画出来并把矩形交回去，绘制和命中判定共用同一份坐标。
+    // 传的是中线而不是顶边——顶栏里所有东西都按同一条中线对齐，
+    // 各自的高度不一样，只有按中线摆才对得齐。
+    Rect DrawChip(CRenderer& renderer, const std::string& text, int x, int center_y,
+                  Color background, Color foreground)
     {
         const int pad = 10;
         int w = 0, h = 0;
         renderer.MeasureText(text, CRenderer::FS_SMALL, w, h);
-        Rect rect{ x, y, w + pad * 2, h + 8 };
+        Rect rect{ x, center_y - (h + 8) / 2, w + pad * 2, h + 8 };
         renderer.FillRoundRect(rect.x, rect.y, rect.w, rect.h, 6, background);
         renderer.DrawText(text, rect.x + pad, rect.y + 4, CRenderer::FS_SMALL, foreground);
         return rect;
@@ -223,7 +225,8 @@ namespace
 
     // 电量图标：右边缘对齐到 right，返回它连同数字一共占了多宽。
     // 让调用方拿到宽度，是为了把时钟顶到它左边而不用在两处各写一遍尺寸。
-    int DrawBattery(CRenderer& renderer, int right, int y, const SystemPower::BatteryState& bat)
+    int DrawBattery(CRenderer& renderer, int right, int center_y,
+                    const SystemPower::BatteryState& bat)
     {
         const int body_w = 30;
         const int body_h = 16;
@@ -242,6 +245,7 @@ namespace
 
         const int total_w = icon_w + 6 + text_w;
         const int icon_x = right - total_w;
+        const int y = center_y - body_h / 2;
 
         Color color = Theme::kTextDim;
         if (bat.valid)
@@ -268,7 +272,8 @@ namespace
             renderer.FillRect(icon_x + 4, y + 4, inner, body_h - 8, color);
         }
 
-        renderer.DrawText(text, right, y - 1, CRenderer::FS_SMALL, color, CRenderer::ALIGN_RIGHT);
+        renderer.DrawText(text, right, center_y - text_h / 2, CRenderer::FS_SMALL, color,
+                          CRenderer::ALIGN_RIGHT);
         return total_w;
     }
 }
@@ -287,6 +292,10 @@ void CApp::DrawHeader()
     m_renderer.DrawLine(0, Theme::kHeaderHeight - 1, Theme::kScreenWidth, Theme::kHeaderHeight - 1,
                         Theme::kSeparator);
 
+    // 顶栏里的每样东西都按这条中线垂直居中。
+    // 原来是各写各的 y（22 / 26 / 27 / 30），字号一不同就参差不齐。
+    const int mid_y = Theme::kHeaderHeight / 2;
+
     // 标题左边缘和左栏封面对齐（封面居中于 48..308 的左栏里）。
     // 返回按钮收成一个窄箭头，正好塞在标题左边那块空当里。
     const int title_x = 78;
@@ -294,33 +303,39 @@ void CApp::DrawHeader()
     m_back_button = Rect{};
     if (m_screens[m_current]->CanGoBack())
     {
-        m_back_button = Rect{ Theme::kPadding, 22, 42, 30 };
+        const int back_h = 30;
+        m_back_button = Rect{ Theme::kPadding, mid_y - back_h / 2, 42, back_h };
         m_renderer.FillRoundRect(m_back_button.x, m_back_button.y, m_back_button.w,
                                  m_back_button.h, 6, Theme::kPanelAlt);
-        m_renderer.DrawText("←", m_back_button.x + m_back_button.w / 2, m_back_button.y + 3,
+        int arrow_w = 0, arrow_h = 0;
+        m_renderer.MeasureText("←", CRenderer::FS_NORMAL, arrow_w, arrow_h);
+        m_renderer.DrawText("←", m_back_button.x + m_back_button.w / 2, mid_y - arrow_h / 2,
                             CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
     }
 
     int title_w = 0, title_h = 0;
     m_renderer.MeasureText("MusicPlayer2", CRenderer::FS_LARGE, title_w, title_h);
-    m_renderer.DrawText("MusicPlayer2", title_x, 20, CRenderer::FS_LARGE, Theme::kAccent);
+    m_renderer.DrawText("MusicPlayer2", title_x, mid_y - title_h / 2, CRenderer::FS_LARGE,
+                        Theme::kAccent);
 
     // 设置和播放列表做成常驻按钮，比藏在 ＋ / − 键里好找，
     // 也让纯触摸操作能进得去
     int left_cursor = title_x + title_w + 16;
-    m_settings_button = DrawChip(m_renderer, T("设置"), left_cursor, 26, Theme::kPanelAlt,
+    m_settings_button = DrawChip(m_renderer, T("设置"), left_cursor, mid_y, Theme::kPanelAlt,
                                  Theme::kText);
     left_cursor = m_settings_button.x + m_settings_button.w + 8;
-    m_playlist_button = DrawChip(m_renderer, T("列表"), left_cursor, 26, Theme::kPanelAlt,
+    m_playlist_button = DrawChip(m_renderer, T("列表"), left_cursor, mid_y, Theme::kPanelAlt,
                                  Theme::kText);
 
     // 触摸开关和设置、列表排在一起：它们是同一类东西（常驻的、点一下就生效的入口），
     // 原来单独摆在右上角，既和右边的时钟抢位置，也让人以为它是状态显示而不是按钮。
     const bool touch_on = m_input.IsTouchEnabled();
     left_cursor = m_playlist_button.x + m_playlist_button.w + 8;
-    m_touch_button = DrawChip(m_renderer, touch_on ? T("触摸 开") : T("触摸 关"), left_cursor, 26,
-                              touch_on ? Theme::kPanelAlt : Theme::kAccentDim,
+    m_touch_button = DrawChip(m_renderer, touch_on ? T("触摸 开") : T("触摸 关"), left_cursor,
+                              mid_y, touch_on ? Theme::kPanelAlt : Theme::kAccentDim,
                               touch_on ? Theme::kText : Theme::kTextDim);
+
+    int left_end = m_touch_button.x + m_touch_button.w;
 
     // 第几首 / 共几首。放顶栏而不是播放界面里：它在哪个界面都有意义，
     // 而且沉浸模式下播放界面上的东西是要收起来的。
@@ -330,33 +345,52 @@ void CApp::DrawHeader()
         char fraction[32];
         std::snprintf(fraction, sizeof(fraction), "%d / %d",
                       m_player.GetCurrentIndex() + 1, total);
-        m_renderer.DrawText(fraction, m_touch_button.x + m_touch_button.w + 14, 30,
-                            CRenderer::FS_SMALL, Theme::kAccent);
+        int frac_w = 0, frac_h = 0;
+        m_renderer.MeasureText(fraction, CRenderer::FS_SMALL, frac_w, frac_h);
+        const int frac_x = left_end + 14;
+        m_renderer.DrawText(fraction, frac_x, mid_y - frac_h / 2, CRenderer::FS_SMALL,
+                            Theme::kAccent);
+        left_end = frac_x + frac_w;
     }
 
-    // 后台扫描时把状态顶到中间：否则用户会以为"打开就是空列表"
-    CLibraryScanner::Progress scan = m_scanner.Poll();
-    if (scan.running)
-    {
-        m_renderer.DrawText(T("正在扫描音乐库…"), Theme::kScreenWidth / 2, 22,
-                            CRenderer::FS_NORMAL, Theme::kHighlight, CRenderer::ALIGN_CENTER);
-    }
-    else
-    {
-        m_renderer.DrawText(m_screens[m_current]->GetTitle(), Theme::kScreenWidth / 2, 22,
-                            CRenderer::FS_NORMAL, Theme::kText, CRenderer::ALIGN_CENTER);
-    }
-
-    // 右上角一行：日期时间 + 电量。
+    // 右上角：日期时间 + 电量。
     // 电量摆在最右，和 Switch 系统界面里的位置一致，用户不用重新找。
     const int right_x = Theme::kScreenWidth - Theme::kPadding;
 
-    const int battery_w = DrawBattery(m_renderer, right_x, 27, SystemPower::Get());
+    const int battery_w = DrawBattery(m_renderer, right_x, mid_y, SystemPower::Get());
 
     SystemClock::DateTime now = SystemClock::Now();
     std::string clock_text = SystemClock::FormatDate(now) + "  " + SystemClock::FormatTime(now);
-    m_renderer.DrawText(clock_text, right_x - battery_w - 16, 26, CRenderer::FS_SMALL,
+    int clock_w = 0, clock_h = 0;
+    m_renderer.MeasureText(clock_text, CRenderer::FS_SMALL, clock_w, clock_h);
+    const int clock_right = right_x - battery_w - 16;
+    m_renderer.DrawText(clock_text, clock_right, mid_y - clock_h / 2, CRenderer::FS_SMALL,
                         now.valid ? Theme::kText : Theme::kTextDisabled, CRenderer::ALIGN_RIGHT);
+
+    const int right_start = clock_right - clock_w;
+
+    // 中间那行字放在左右两簇之间的空当正中，而不是屏幕正中。
+    //
+    // 屏幕正中是错的：左边比右边宽，曲目一多（"128 / 647"）左簇还会继续往右长，
+    // 迟早压到标题上。按空当居中，两边留多少空自动就均等了。
+    // 后台扫描时把状态顶到中间：否则用户会以为"打开就是空列表"
+    CLibraryScanner::Progress scan = m_scanner.Poll();
+    const std::string center_text = scan.running ? std::string(T("正在扫描音乐库…"))
+                                                 : m_screens[m_current]->GetTitle();
+    int center_w = 0, center_h = 0;
+    m_renderer.MeasureText(center_text, CRenderer::FS_NORMAL, center_w, center_h);
+
+    const int kGap = 16;
+    const int span_left = left_end + kGap;
+    const int span_right = right_start - kGap;
+    int center_x = (span_left + span_right) / 2;
+    // 兜底按文字的实际宽度算，不是按中心点：空当放不下这行字时，
+    // 只判断中心点会让左半边照样压上去
+    if (center_x - center_w / 2 < span_left)
+        center_x = span_left + center_w / 2;
+
+    m_renderer.DrawText(center_text, center_x, mid_y - center_h / 2, CRenderer::FS_NORMAL,
+                        scan.running ? Theme::kHighlight : Theme::kText, CRenderer::ALIGN_CENTER);
 }
 
 void CApp::ToggleTouchEnabled()
